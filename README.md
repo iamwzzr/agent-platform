@@ -2,7 +2,7 @@
 
 这是用于亲手复现 `agent-platform-demo` 的独立学习项目。
 
-当前业务目录仍为空，没有复制 demo 的业务代码或测试；后端已经完成 `uv` 初始化并加入 FastAPI、Uvicorn、pytest 和 httpx。`agent-platform-demo` 只作为对照答案和最终验收夹具；这里的每个功能模块由学习者亲手实现、运行、解释并提交。
+当前已经完成产品合同和 FastAPI liveness 最小垂直切片，下一步进入数据库与 API。`agent-platform-demo` 只作为对照答案和最终验收夹具；这里的每个功能模块由学习者亲手实现、运行、解释并提交。
 
 完整阶段、参与门禁和当前状态见 [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)。
 
@@ -14,24 +14,29 @@
 4. 不整文件复制 `agent-platform-demo`。
 5. 真实参与证据记录在 `PARTICIPATION.md`；Codex 创建的空白脚手架不计作学习者代码。
 
-## 空白结构
+## 当前结构
 
 ```text
 agent-platform/
 ├── backend/
-│   ├── app/
-│   └── tests/
+│   ├── app/main.py
+│   ├── tests/test_health.py
+│   ├── pyproject.toml
+│   └── uv.lock
 ├── frontend/
 │   └── src/
 ├── evals/
 ├── docs/
+│   ├── PRODUCT_SCOPE.md
+│   └── DEVELOPMENT_ROADMAP.md
 ├── .gitignore
 └── PARTICIPATION.md
 ```
 
-## 第一关
+## 已完成
 
-由学习者亲手创建最小 FastAPI 应用，并实现：
+- 阶段 0：产品合同、有证据 case、无证据 case、非目标和固定质量标准。
+- 阶段 1：FastAPI liveness route、自动测试、200/404/405、故障注入与恢复。
 
 ```text
 GET /api/v1/health/live
@@ -39,4 +44,13 @@ GET /api/v1/health/live
 → {"status": "ok"}
 ```
 
-暂时不要创建数据库、LangGraph、RAG 或 React。先证明自己能解释：HTTP 请求怎样进入 FastAPI route，响应怎样返回调用方。
+## 当前关：数据库与 API
+
+```text
+Job + Document
+→ FastAPI 创建/查询 API
+→ SQLAlchemy 持久化
+→ workspace 隔离
+```
+
+阶段 2 只建立可靠的领域数据入口；暂不添加 RAG、LangGraph、真实 LLM 或 React。

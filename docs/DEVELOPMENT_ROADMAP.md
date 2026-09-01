@@ -35,10 +35,11 @@
 
 ## 当前状态
 
-- 已完成：`uv` 项目初始化、Python 3.12 虚拟环境、FastAPI/Uvicorn/pytest/httpx 依赖和 `uv.lock`。
-- 正在进行：阶段 1，最小 FastAPI liveness API。
-- 尚未开始：业务代码、测试、Git 仓库、数据库、RAG、LangGraph、LLM、React、评测、Docker。
-- 当前环境限制：本机尚未安装 Docker；这不阻塞阶段 1～8。
+- 已完成：阶段 0 产品合同；阶段 1 FastAPI liveness、自动测试、故障注入、口述和 Git 提交。
+- 已建立：Python 3.12/uv 环境、FastAPI/Uvicorn/pytest/httpx2 依赖、`uv.lock` 与 `main` 分支提交历史。
+- 正在准备：阶段 2 数据库与 API，先定义 Settings、Job、Document 和 workspace 隔离边界。
+- 尚未开始：数据库业务实现、RAG、LangGraph、真实 LLM、Run 恢复、固定评测、React 和 Docker。
+- 当前环境限制：本机尚未安装 Docker；阶段 2 先用 SQLite 开发，不阻塞当前学习。
 
 ## 第一阶段合同
 
@@ -49,3 +50,7 @@ GET /api/v1/health/live
 ```
 
 Liveness 只回答“FastAPI 进程是否活着”，不访问数据库、LLM 或任何外部服务。依赖检查以后放在 readiness endpoint。
+
+## 第二阶段边界
+
+阶段 2 只实现领域数据入口和持久化：Settings、异步 SQLAlchemy、Job、Document、创建/查询 API、约束与 workspace 隔离测试。暂不实现文档切块、向量检索、LangGraph、Provider 或前端。
