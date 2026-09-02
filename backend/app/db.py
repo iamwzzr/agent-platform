@@ -25,6 +25,13 @@ def build_session_factory(
     return async_sessionmaker(engine, expire_on_commit=False)
 
 
+async def create_tables(target_engine: AsyncEngine) -> None:
+    from app import models as _models  # noqa: F401
+
+    async with target_engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+
 settings = Settings()
 engine = build_engine(settings.database_url)
 session_factory = build_session_factory(engine)
