@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, String, Text, Uuid
+from sqlalchemy import CheckConstraint, DateTime, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -21,6 +21,11 @@ class Document(Base):
         CheckConstraint(
             "length(trim(content)) > 0",
             name="ck_documents_content_not_blank",
+        ),
+        UniqueConstraint(
+            "id",
+            "workspace_id",
+            name="uq_documents_id_workspace_id",
         ),
     )
 

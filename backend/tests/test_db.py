@@ -27,12 +27,11 @@ async def test_create_tables_creates_domain_tables() -> None:
 
         async with test_engine.connect() as connection:
             table_names = await connection.run_sync(
-                lambda sync_connection: inspect(
-                    sync_connection
-                ).get_table_names()
+                lambda sync_connection: inspect(sync_connection).get_table_names()
             )
 
         assert "jobs" in table_names
         assert "documents" in table_names
+        assert "document_chunks" in table_names
     finally:
         await test_engine.dispose()

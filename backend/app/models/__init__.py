@@ -1,4 +1,5 @@
-from app.models.job import Job
 from app.models.document import Document
+from app.models.document_chunk import DocumentChunk
+from app.models.job import Job
 
-__all__ = ["Job", "Document"]
+__all__ = ["Document", "DocumentChunk", "Job"]
