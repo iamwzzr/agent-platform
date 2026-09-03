@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app.api.documents import router as documents_router
 from app.api.jobs import router as jobs_router
+from app.api.retrieval import router as retrieval_router
 from app.db import create_tables, engine
 
 
@@ -20,6 +21,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(lifespan=lifespan)
 app.include_router(jobs_router)
 app.include_router(documents_router)
+app.include_router(retrieval_router)
 
 
 @app.get("/api/v1/health/live")
