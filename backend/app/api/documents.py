@@ -7,8 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.models.document import Document
+from app.rag.ingestion import (
+    DocumentIngestionConflictError,
+    DocumentNotFoundError,
+    ingest_document,
+)
 from app.schemas.document import DocumentCreate, DocumentRead
-
+from app.schemas.document_chunk import DocumentIngestionRead
 
 router = APIRouter(
     prefix="/api/v1/workspaces/{workspace_id}/documents",
@@ -77,3 +82,40 @@ async def get_document(
         )
 
     return document
+
+
+@router.post(
+    "/{document_id}/ingest",
+    response_model=DocumentIngestionRead,
+)
+async def ingest_saved_document(
+    workspace_id: WorkspaceId,
+    document_id: UUID,
+    session: SessionDependency,
+) -> DocumentIngestionRead:
+    try:
+        chunks = await ingest_document(
+            session,
+            workspace_id=workspace_id,
+            document_id=document_id,
+        )
+        await session.commit()
+    except DocumentNotFoundError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        ) from exc
+    except DocumentIngestionConflictError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document ingestion conflict",
+        ) from exc
+
+    return DocumentIngestionRead(
+        document_id=document_id,
+        workspace_id=workspace_id,
+        chunk_count=len(chunks),
+        chunks=chunks,
+    )
