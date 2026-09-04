@@ -6,7 +6,12 @@ from app.providers import (
     AgentProvider,
     DeterministicMockProvider,
 )
-from app.schemas.artifact import Evidence, Requirement
+from app.schemas.artifact import (
+    ApplicationArtifact,
+    ArtifactValidation,
+    Evidence,
+    Requirement,
+)
 from app.validation import validate_artifact
 
 
@@ -99,3 +104,39 @@ async def test_mock_provider_snapshots_requirement_inputs() -> None:
     requirement.text = "Tampered after provider execution."
 
     assert artifact.requirements[0].text == original_text
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_revises_from_trusted_inputs() -> None:
+    run_id = uuid4()
+    requirement = Requirement(
+        id="req-1",
+        text="Five years of Kubernetes experience.",
+        priority="high",
+    )
+    invalid_artifact = ApplicationArtifact(
+        run_id=run_id,
+        requirements=[requirement],
+        claims=[],
+        resume_bullets=[],
+        cover_letter=None,
+        gaps=[],
+        citations=[],
+    )
+    validation = ArtifactValidation(
+        passed=False,
+        uncovered_requirement_ids=[requirement.id],
+    )
+    provider = DeterministicMockProvider()
+
+    revised_artifact = await provider.revise_artifact(
+        run_id=run_id,
+        artifact=invalid_artifact,
+        validation=validation,
+        requirements=[requirement],
+        evidence=[],
+    )
+
+    assert revised_artifact.run_id == run_id
+    assert revised_artifact.gaps[0].requirement_id == requirement.id
+    assert revised_artifact.gaps[0].reason_code == "no_grounded_evidence"

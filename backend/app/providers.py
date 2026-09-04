@@ -4,6 +4,7 @@ from uuid import UUID
 
 from app.schemas.artifact import (
     ApplicationArtifact,
+    ArtifactValidation,
     Citation,
     Claim,
     Evidence,
@@ -22,6 +23,15 @@ class AgentProvider(Protocol):
         self,
         *,
         run_id: UUID,
+        requirements: Sequence[Requirement],
+        evidence: Sequence[Evidence],
+    ) -> ApplicationArtifact: ...
+    async def revise_artifact(
+        self,
+        *,
+        run_id: UUID,
+        artifact: ApplicationArtifact,
+        validation: ArtifactValidation,
         requirements: Sequence[Requirement],
         evidence: Sequence[Evidence],
     ) -> ApplicationArtifact: ...
@@ -113,4 +123,19 @@ class DeterministicMockProvider:
             cover_letter=None,
             gaps=gaps,
             citations=list(citations_by_chunk_id.values()),
+        )
+
+    async def revise_artifact(
+        self,
+        *,
+        run_id: UUID,
+        artifact: ApplicationArtifact,
+        validation: ArtifactValidation,
+        requirements: Sequence[Requirement],
+        evidence: Sequence[Evidence],
+    ) -> ApplicationArtifact:
+        return await self.draft_artifact(
+            run_id=run_id,
+            requirements=requirements,
+            evidence=evidence,
         )
