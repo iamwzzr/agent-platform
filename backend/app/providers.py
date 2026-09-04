@@ -2,6 +2,8 @@ from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
+from app.config import Settings
+from app.openai_provider import OpenAIResponsesProvider, ProviderConfigurationError
 from app.schemas.artifact import (
     ApplicationArtifact,
     ArtifactValidation,
@@ -139,3 +141,21 @@ class DeterministicMockProvider:
             requirements=requirements,
             evidence=evidence,
         )
+
+
+def build_agent_provider(settings: Settings) -> AgentProvider:
+    if settings.llm_provider == "mock":
+        return DeterministicMockProvider()
+
+    api_key = settings.openai_api_key
+    model = settings.openai_model
+    if api_key is None or model is None:
+        raise ProviderConfigurationError(
+            "OpenAI provider requires AGENT_PLATFORM_OPENAI_API_KEY "
+            "and AGENT_PLATFORM_OPENAI_MODEL"
+        )
+
+    return OpenAIResponsesProvider(
+        api_key=api_key.get_secret_value(),
+        model=model,
+    )
