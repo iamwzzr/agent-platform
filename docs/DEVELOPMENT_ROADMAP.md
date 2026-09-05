@@ -37,8 +37,9 @@
 
 - 已完成并提交：阶段 0–5、阶段 6 的离线 OpenAI Provider 适配，以及阶段 7 的 Run/Event/Artifact、后台 Run API、幂等、错误分类与有界重试、逐节点 checkpoint/resume、租约与执行 token fencing。阶段 6 真实 live smoke 经用户明确延期。
 - 已完成的开发初期切片：阶段 8 的 `smoke-v1` 已固定 3 个离线 case（有证据、无证据 gap、伪造引用阻断）及指标/CLI；它是开发初期 smoke，不等于路线图要求的正式 10-case 完成态。
-- 当前边界：默认 Mock 不联网；BackgroundTasks 只用于单进程本地演示，不等同于 durable worker；真实 OpenAI、PostgreSQL/Alembic、Docker 和生产队列尚未验证。
-- 下一步：新增版本化 10-case 数据集完成正式 Stage 8；不得原地扩写已冻结的 `smoke-v1`。
+- 已完成的本地产品闭环：阶段 9 React 操作台支持创建 Job/Document、摄取、幂等启动、URL 可恢复 Run 轮询、事件、可信引用原文、gap 和条件 Resume；3 个 MSW smoke、production build 与后端回归通过。
+- 当前边界：默认 Mock 不联网；前端只提供单次当前会话工作台，没有账号、历史列表或文件上传；BackgroundTasks 只用于单进程本地演示，不等同于 durable worker；真实 OpenAI、PostgreSQL/Alembic、Docker 和生产队列尚未验证。
+- 下一步：正式 10-case Stage 8 数据集仍是质量 backlog；产品部署主线进入 Stage 10，补 readiness、Secret/CORS、迁移后的 PostgreSQL、Docker Compose 和 CI。不得原地扩写已冻结的 `smoke-v1`。
 
 ## 第一阶段合同
 

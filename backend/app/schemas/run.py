@@ -48,6 +48,14 @@ class RunEventRead(RunModel):
         return _normalize_utc(value)
 
 
+class CitationSourceRead(RunModel):
+    document_id: UUID
+    document_name: str
+    chunk_id: UUID
+    position: int = Field(ge=0)
+    excerpt: str
+
+
 class RunArtifactRead(RunModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
@@ -55,6 +63,7 @@ class RunArtifactRead(RunModel):
     run_id: UUID
     content: ApplicationArtifact
     validation: ArtifactValidation
+    citation_sources: list[CitationSourceRead] = Field(default_factory=list)
     created_at: datetime
 
     @field_validator("created_at")
@@ -76,6 +85,8 @@ class RunRead(RunModel):
     revision_count: int = Field(ge=0)
     attempt_count: int = Field(ge=0)
     retryable: bool
+    can_resume: bool = False
+    terminal_validation: ArtifactValidation | None = None
     error_code: str | None
     created_at: datetime
     started_at: datetime | None

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Annotated, NoReturn
 from uuid import UUID
@@ -12,7 +13,8 @@ from fastapi import (
     status,
 )
 from openai import OpenAIError
-from sqlalchemy import select
+from pydantic import ValidationError
+from sqlalchemy import and_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +29,8 @@ from app.application_executor import (
 from app.db import get_session, session_factory, settings
 from app.models.agent_run import AgentRun
 from app.models.artifact_record import ArtifactRecord
+from app.models.document import Document
+from app.models.document_chunk import DocumentChunk
 from app.models.run_event import RunEvent
 from app.openai_provider import ProviderConfigurationError, ProviderResponseError
 from app.providers import build_agent_provider
@@ -46,7 +50,14 @@ from app.run_service import (
     RunNotResumableError,
     RunResourceNotFoundError,
 )
-from app.schemas.run import RunArtifactRead, RunCreate, RunEventRead, RunRead
+from app.schemas.artifact import ApplicationArtifact, ArtifactValidation
+from app.schemas.run import (
+    CitationSourceRead,
+    RunArtifactRead,
+    RunCreate,
+    RunEventRead,
+    RunRead,
+)
 
 _EXECUTION_FAILURES = (
     InvalidRunExecutionResultError,
@@ -167,10 +178,7 @@ async def _read_run(
             )
         ).all()
     except SQLAlchemyError as error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Run service unavailable",
-        ) from error
+        _raise_read_error(error)
 
     if not rows:
         raise HTTPException(
@@ -184,14 +192,95 @@ async def _read_run(
         (record for _, _, record in rows if record is not None),
         None,
     )
-    return _to_run_read(run, events=events, artifact=artifact)
+    try:
+        artifact_read = await _to_artifact_read(
+            session=session,
+            workspace_id=workspace_id,
+            artifact=artifact,
+        )
+        return _to_run_read(run, events=events, artifact=artifact_read)
+    except (SQLAlchemyError, ValidationError, TypeError, ValueError) as error:
+        _raise_read_error(error)
+
+
+async def _to_artifact_read(
+    *,
+    session: AsyncSession,
+    workspace_id: str,
+    artifact: ArtifactRecord | None,
+) -> RunArtifactRead | None:
+    if artifact is None:
+        return None
+
+    content = ApplicationArtifact.model_validate(artifact.content)
+    validation = ArtifactValidation.model_validate(artifact.validation)
+    citation_sources = await _read_citation_sources(
+        session=session,
+        workspace_id=workspace_id,
+        content=content,
+        validation=validation,
+    )
+    return RunArtifactRead(
+        id=artifact.id,
+        run_id=artifact.run_id,
+        content=content,
+        validation=validation,
+        citation_sources=citation_sources,
+        created_at=artifact.created_at,
+    )
+
+
+async def _read_citation_sources(
+    *,
+    session: AsyncSession,
+    workspace_id: str,
+    content: ApplicationArtifact,
+    validation: ArtifactValidation,
+) -> list[CitationSourceRead]:
+    if not validation.passed or not content.citations:
+        return []
+
+    citation_pairs = list(
+        dict.fromkeys(
+            (citation.document_id, citation.chunk_id) for citation in content.citations
+        )
+    )
+    chunk_ids = [chunk_id for _, chunk_id in citation_pairs]
+    rows = (
+        await session.execute(
+            select(DocumentChunk, Document.name)
+            .join(
+                Document,
+                and_(
+                    Document.id == DocumentChunk.document_id,
+                    Document.workspace_id == DocumentChunk.workspace_id,
+                ),
+            )
+            .where(
+                DocumentChunk.workspace_id == workspace_id,
+                Document.workspace_id == workspace_id,
+                DocumentChunk.id.in_(chunk_ids),
+            )
+        )
+    ).all()
+    sources_by_pair = {
+        (chunk.document_id, chunk.id): CitationSourceRead(
+            document_id=chunk.document_id,
+            document_name=document_name,
+            chunk_id=chunk.id,
+            position=chunk.position,
+            excerpt=chunk.content,
+        )
+        for chunk, document_name in rows
+    }
+    return [sources_by_pair[pair] for pair in citation_pairs if pair in sources_by_pair]
 
 
 def _to_run_read(
     run: AgentRun,
     *,
     events: list[RunEvent],
-    artifact: ArtifactRecord | None,
+    artifact: RunArtifactRead | None,
 ) -> RunRead:
     return RunRead(
         id=run.id,
@@ -206,16 +295,54 @@ def _to_run_read(
         revision_count=run.revision_count,
         attempt_count=run.attempt_count,
         retryable=run.retryable,
+        can_resume=_can_resume(run),
+        terminal_validation=_terminal_validation(run, events),
         error_code=run.error_code,
         created_at=run.created_at,
         started_at=run.started_at,
         finished_at=run.finished_at,
         lease_expires_at=run.lease_expires_at,
         events=[RunEventRead.model_validate(event) for event in events],
-        artifact=(
-            None if artifact is None else RunArtifactRead.model_validate(artifact)
-        ),
+        artifact=artifact,
     )
+
+
+def _can_resume(run: AgentRun) -> bool:
+    if run.status == "failed":
+        return run.retryable
+    if run.status != "running" or run.lease_expires_at is None:
+        return False
+
+    now = datetime.now(UTC)
+    comparable_now = (
+        now if run.lease_expires_at.tzinfo is not None else now.replace(tzinfo=None)
+    )
+    return run.lease_expires_at <= comparable_now
+
+
+def _terminal_validation(
+    run: AgentRun,
+    events: list[RunEvent],
+) -> ArtifactValidation | None:
+    if run.status != "validation_failed":
+        return None
+    for event in reversed(events):
+        if event.kind != "validation_failed":
+            continue
+        if not isinstance(event.data, dict):
+            raise TypeError("Invalid persisted run event data")
+        raw_validation = event.data.get("validation")
+        if raw_validation is None:
+            return None
+        return ArtifactValidation.model_validate(raw_validation)
+    return None
+
+
+def _raise_read_error(error: Exception) -> NoReturn:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Run service unavailable",
+    ) from error
 
 
 def _raise_start_error(error: Exception) -> NoReturn:

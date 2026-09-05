@@ -1,0 +1,243 @@
+import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
+
+import { getJob, resumeRun } from "../api/agentPlatform";
+import { getErrorMessage, isAbortError, isApiError } from "../api/client";
+import type { JobRead } from "../api/contracts";
+import { AppHeader } from "../components/AppHeader";
+import { ArtifactView } from "../components/ArtifactView";
+import { ErrorNotice } from "../components/ErrorNotice";
+import { EventTimeline } from "../components/EventTimeline";
+import { RunStatus } from "../components/RunStatus";
+import { useRunPolling } from "../hooks/useRunPolling";
+
+export function RunPage() {
+  const { workspaceId = "", runId = "" } = useParams();
+  const { run, errorMessage, isInitialLoading, notFound, refresh } =
+    useRunPolling(workspaceId, runId);
+  const [job, setJob] = useState<JobRead | null>(null);
+  const [isResuming, setIsResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const jobId = run?.job_id;
+  const visibleJob =
+    job !== null && job.id === jobId && job.workspace_id === workspaceId
+      ? job
+      : null;
+
+  useEffect(() => {
+    if (!jobId) {
+      return;
+    }
+
+    const controller = new AbortController();
+    void getJob(workspaceId, jobId, { signal: controller.signal })
+      .then(setJob)
+      .catch((error: unknown) => {
+        if (!isAbortError(error)) {
+          setJob(null);
+        }
+      });
+
+    return () => controller.abort();
+  }, [jobId, workspaceId]);
+
+  const handleResume = async () => {
+    setIsResuming(true);
+    setResumeError(null);
+    try {
+      await resumeRun(workspaceId, runId);
+      refresh();
+    } catch (error: unknown) {
+      // A conflict often means another request already resumed the run. Read
+      // the canonical state before offering another mutation.
+      refresh();
+      if (!isApiError(error) || error.status !== 409) {
+        setResumeError(getErrorMessage(error));
+      }
+    } finally {
+      setIsResuming(false);
+    }
+  };
+
+  if (!workspaceId || !runId) {
+    return (
+      <main className="app-shell">
+        <AppHeader backTo="/" />
+        <ErrorNotice
+          title="Run address is incomplete"
+          message="Open the run again from the application workbench."
+        />
+      </main>
+    );
+  }
+
+  if (isInitialLoading && !run) {
+    return (
+      <main className="app-shell">
+        <AppHeader workspaceId={workspaceId} backTo="/" />
+        <section className="loading-state" aria-live="polite">
+          <span className="loading-spinner" aria-hidden="true" />
+          <p>Loading the application record…</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (notFound && !run) {
+    return (
+      <main className="app-shell">
+        <AppHeader workspaceId={workspaceId} backTo="/" />
+        <ErrorNotice
+          title="Run not found"
+          message="This run is unavailable in the selected workspace."
+          onRetry={refresh}
+          retryLabel="Try again"
+        />
+      </main>
+    );
+  }
+
+  if (!run) {
+    return (
+      <main className="app-shell">
+        <AppHeader workspaceId={workspaceId} backTo="/" />
+        <ErrorNotice
+          title="The run could not be loaded"
+          message={errorMessage ?? "The service is temporarily unavailable."}
+          onRetry={refresh}
+          retryLabel="Try again"
+        />
+      </main>
+    );
+  }
+
+  return (
+    <main className="app-shell">
+      <AppHeader workspaceId={workspaceId} backTo="/" />
+
+      <section className="run-heading">
+        <div>
+          <p className="eyebrow">Application record</p>
+          <h1>{visibleJob?.title ?? "Application run"}</h1>
+          <p>
+            Review the generated material against its evidence before you use
+            it.
+          </p>
+        </div>
+      </section>
+
+      <RunStatus
+        run={run}
+        jobTitle={visibleJob?.title}
+        connectivityError={errorMessage}
+        isResuming={isResuming}
+        resumeError={resumeError}
+        onResume={() => void handleResume()}
+      />
+
+      {run.status === "validation_failed" && run.terminal_validation ? (
+        <section className="panel validation-panel" aria-labelledby="validation-title">
+          <p className="eyebrow">Safety gate</p>
+          <h2 id="validation-title">The draft was not released</h2>
+          <p>
+            The validator found content that could not be grounded in the
+            submitted evidence. No application material was published.
+          </p>
+          <ValidationSummary validation={run.terminal_validation} />
+        </section>
+      ) : null}
+
+      <section className="run-grid">
+        <div className="run-main-column">
+          {run.artifact ? (
+            <ArtifactView artifact={run.artifact} />
+          ) : (
+            <section className="panel pending-artifact" aria-live="polite">
+              <p className="eyebrow">Application material</p>
+              <h2>
+                {run.status === "failed"
+                  ? "No material was released"
+                  : "Evidence checks are in progress"}
+              </h2>
+              <p>
+                {run.status === "failed"
+                  ? "Recover the run if that option is available. Existing inputs remain saved."
+                  : "The verified result will appear here when every claim has passed validation."}
+              </p>
+            </section>
+          )}
+        </div>
+
+        <aside className="run-side-column">
+          <EventTimeline events={run.events} />
+          <details className="technical-details panel">
+            <summary>Technical details</summary>
+            <dl>
+              <div>
+                <dt>Run ID</dt>
+                <dd>{run.id}</dd>
+              </div>
+              <div>
+                <dt>Provider</dt>
+                <dd>{run.provider}</dd>
+              </div>
+              <div>
+                <dt>Model</dt>
+                <dd>{run.model}</dd>
+              </div>
+              <div>
+                <dt>Last checkpoint</dt>
+                <dd>{run.current_node ?? "Not started"}</dd>
+              </div>
+            </dl>
+          </details>
+        </aside>
+      </section>
+    </main>
+  );
+}
+
+function ValidationSummary({
+  validation,
+}: {
+  validation: NonNullable<import("../api/contracts").RunRead["terminal_validation"]>;
+}) {
+  const issues = [
+    countIssue(
+      validation.unsupported_claim_ids.length,
+      "claim lacked support",
+      "claims lacked support",
+    ),
+    countIssue(
+      validation.uncovered_requirement_ids.length,
+      "role requirement was not covered",
+      "role requirements were not covered",
+    ),
+    countIssue(
+      validation.invalid_citation_chunk_ids.length,
+      "evidence reference was invalid",
+      "evidence references were invalid",
+    ),
+  ].filter((issue): issue is string => issue !== null);
+
+  return issues.length > 0 ? (
+    <ul className="validation-list">
+      {issues.map((issue) => (
+        <li key={issue}>{issue}</li>
+      ))}
+    </ul>
+  ) : (
+    <p className="muted-copy">See the run timeline for the blocked step.</p>
+  );
+}
+
+function countIssue(
+  count: number,
+  singular: string,
+  plural: string,
+): string | null {
+  if (count === 0) {
+    return null;
+  }
+  return `${count} ${count === 1 ? singular : plural}.`;
+}
