@@ -22,6 +22,22 @@
 
 > 上述阶段记录由 Codex 根据学习者真实完成的代码、终端输出和口述整理。提交前由学习者核对；未亲手完成的工作不得计入个人参与。
 
+## Stage 7 工程实施记录（Codex 直接实现，不计作学习者亲手编码）
+
+- 日期与目标：2026-09-05；把 Agent 执行过程变成可查询、可恢复且能够安全重放的数据，完成 Run、Event、Artifact、幂等、重试、checkpoint/resume 和后台 API。
+- 实现方式：本阶段由用户明确授权 Codex 直接修改项目，因此下面内容是工程变更记录，不冒充学习者亲手编码、故障实验或已完成口述。对应功能提交为 `9e976ca`（`feat: add recoverable application runs`）。
+- 新增核心文件：`backend/app/models/agent_run.py`、`backend/app/models/run_event.py`、`backend/app/models/artifact_record.py`、`backend/app/run_execution.py`、`backend/app/run_service.py`、`backend/app/application_executor.py`、`backend/app/schemas/run.py`、`backend/app/api/runs.py`。
+- 持久化与状态机：实现 `queued → running → succeeded/validation_failed/failed`；Run 保存 provider/model、attempt/revision、当前节点、checkpoint、retryable error code、开始/结束时间、租约和 execution token；RunEvent 按 run 内 sequence 排序；只有通过 deterministic validator 的 Artifact 才能与 succeeded 状态同事务发布，validation_failed 不保存可发布 Artifact。
+- 幂等与隔离：同一 workspace、同一 Idempotency-Key、同一规范化请求复用原 Run，异参返回冲突；首次并发插入由数据库唯一约束兜底；Job、Document 和 Chunk 在运行前按 workspace 整批校验；AgentRun 使用 `(job_id, workspace_id)` 复合外键，执行器 join 再次限定 workspace；旧 SQLite `jobs` 表通过幂等唯一索引兼容，不删除已有数据。
+- 执行与恢复：接通 Job/DocumentChunk/RAG/LangGraph/Provider/validator 的生产组合；每完成一个图节点就保存 checkpoint 和 `node_completed` 事件；恢复时反序列化可信状态并跳过已完成的 extract/retrieve/draft 等节点；revision 有上限，terminal checkpoint 后若最终事务失败仍可继续恢复。
+- 并发安全：认领 Run 时生成 execution token 和到期租约；heartbeat 定期续租；checkpoint、retry event、失败和成功事务均以当前 token 做原子 fencing；旧 worker 丢失租约后会被取消，不能覆盖新 worker 或发布旧 Artifact；取消执行会落为可恢复的 `execution_interrupted`。
+- Provider 失败策略：关闭 OpenAI SDK 内建重试，应用层统一分类 timeout、connection、409、429、5xx 为有界 transient retry；配置、401/403、quota/billing、非法 structured output 和其他 permanent 错误 fail-fast；支持有界 Retry-After、指数退避和 jitter，只持久化稳定 reason code，不保存原始异常、响应或 API key。外部调用超时仍属于结果未知，不能宣称供应商端 exactly-once 或绝不重复计费。
+- API 与生命周期：新增 start/detail/resume 路由；start/resume 在认领后返回 `202 Accepted + run_id`，单进程 `BackgroundTasks` 继续执行，GET 返回有序事件、恢复信息和 Artifact；响应隐藏 execution token、checkpoint 和内部异常；SQLite 回读的 Run/Event/Artifact 时间统一规范为 UTC；应用关闭时只释放内部拥有的 OpenAI client，并始终释放数据库 Engine。
+- 防御性校验：生产 verifier 会重新查询 Chunk 并核对 workspace、document、chunk ID、position 和 content，拒绝跨 workspace、伪造或变异证据；executor 结果在发布前深拷贝，并用可信 requirements/evidence 重新运行 deterministic validator，防止构造后修改或伪造 passed validation。
+- 自动验收：后端全量 `219 passed, 1 skipped in 4.11s`；唯一 skip 是用户此前明确延期的真实 OpenAI live smoke。Ruff 0.16.5 全量 lint 为 `All checks passed!`，Stage 7 的 35 个 Python 变更文件均已格式化；compileall、`git diff --check`、`uv lock --check` 和私钥/API-key 模式扫描均通过；独立代码复审最终结论为 `No blockers`。
+- 本阶段真实修复的问题：同步等待模型导致客户端拿不到 run ID；跨 workspace Job/Run 仅靠服务校验；旧 SQLite 缺复合候选键；旧 worker 可能采用新 token；heartbeat 与终态提交竞态；同作用域 Chunk 内容伪造；executor DTO 构造后变异；终态数据库写入失败；UTC 时区丢失；默认 OpenAI client 没有关闭路径。以上均已加入针对性测试。
+- 尚待学习者完成：用自己的语言解释 `202 → running → background → checkpoint/event → terminal` 请求链、同 key 为什么只能执行一次、transient/permanent 区别、token fencing 的作用、为什么 validation_failed 不保存 Artifact，以及 BackgroundTasks/真实 OpenAI live/供应商 exactly-once 的边界。完成并核对后，才能在上方学习者参与表增加 Stage 7 个人参与记录。
+
 ## 后续阶段记录模板
 
 每完成一个模块，复制下面这一行并替换所有占位内容。文件路径、命令、失败现象和 Commit 必须能够在项目中核验。
