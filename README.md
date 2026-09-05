@@ -2,7 +2,7 @@
 
 这是用于亲手复现 `agent-platform-demo` 的独立学习项目。
 
-当前已经完成产品合同和 FastAPI liveness 最小垂直切片，下一步进入数据库与 API。`agent-platform-demo` 只作为对照答案和最终验收夹具；这里的每个功能模块由学习者亲手实现、运行、解释并提交。
+当前已完成阶段 0–6 的离线里程碑，并完成待提交的阶段 7 Run、异常恢复和后台 API；下一步进入固定评测。真实 OpenAI live smoke 仍按用户决定延期。`agent-platform-demo` 只作为对照答案和最终验收夹具；学习参与证据仍只记录学习者亲手实现、运行、解释并提交的内容。
 
 完整阶段、参与门禁和当前状态见 [`docs/DEVELOPMENT_ROADMAP.md`](docs/DEVELOPMENT_ROADMAP.md)。
 

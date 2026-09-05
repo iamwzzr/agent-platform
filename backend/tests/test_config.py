@@ -16,6 +16,13 @@ def test_settings_uses_default_database_url(
     assert settings.database_url == "sqlite+aiosqlite:///./agent-platform.db"
 
 
+def test_settings_uses_bounded_provider_retry_defaults() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.provider_retry_max_attempts == 3
+    assert settings.provider_retry_initial_delay_seconds == 0.5
+
+
 def test_settings_reads_database_url_from_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -27,6 +34,41 @@ def test_settings_reads_database_url_from_environment(
     settings = Settings(_env_file=None)
 
     assert settings.database_url == "sqlite+aiosqlite:///./test.db"
+
+
+def test_settings_reads_provider_retry_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_PLATFORM_PROVIDER_RETRY_MAX_ATTEMPTS", "5")
+    monkeypatch.setenv(
+        "AGENT_PLATFORM_PROVIDER_RETRY_INITIAL_DELAY_SECONDS",
+        "1.25",
+    )
+
+    settings = Settings(_env_file=None)
+
+    assert settings.provider_retry_max_attempts == 5
+    assert settings.provider_retry_initial_delay_seconds == 1.25
+
+
+@pytest.mark.parametrize(
+    ("setting_name", "value"),
+    [
+        ("provider_retry_max_attempts", 0),
+        ("provider_retry_max_attempts", 6),
+        ("provider_retry_initial_delay_seconds", -0.1),
+        ("provider_retry_initial_delay_seconds", 61.0),
+    ],
+)
+def test_settings_rejects_unbounded_provider_retry_configuration(
+    setting_name: str,
+    value: float,
+) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            **{setting_name: value},
+        )
 
 
 def test_settings_reads_openai_provider_configuration(

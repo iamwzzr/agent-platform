@@ -35,11 +35,10 @@
 
 ## 当前状态
 
-- 已完成：阶段 0 产品合同；阶段 1 FastAPI liveness、自动测试、故障注入、口述和 Git 提交。
-- 已建立：Python 3.12/uv 环境、FastAPI/Uvicorn/pytest/httpx2 依赖、`uv.lock` 与 `main` 分支提交历史。
-- 正在准备：阶段 2 数据库与 API，先定义 Settings、Job、Document 和 workspace 隔离边界。
-- 尚未开始：数据库业务实现、RAG、LangGraph、真实 LLM、Run 恢复、固定评测、React 和 Docker。
-- 当前环境限制：本机尚未安装 Docker；阶段 2 先用 SQLite 开发，不阻塞当前学习。
+- 已完成并提交：阶段 0–5，以及阶段 6 的离线 OpenAI Provider 适配；阶段 6 真实 live smoke 经用户明确延期。
+- 已完成待提交：阶段 7 的 Run/Event/Artifact、后台 Run API、幂等、错误分类与有界重试、逐节点 checkpoint/resume、租约与执行 token fencing；离线后端全量门禁通过。
+- 当前边界：默认 Mock 不联网；BackgroundTasks 只用于单进程本地演示，不等同于 durable worker；真实 OpenAI、PostgreSQL/Alembic、Docker 和生产队列尚未验证。
+- 下一步：核对 Stage 7 差异与学习参与门禁，完成本地提交后进入阶段 8 固定评测。
 
 ## 第一阶段合同
 

@@ -7,6 +7,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./agent-platform.db"
     llm_provider: Literal["mock", "openai"] = "mock"
+    provider_retry_max_attempts: int = Field(default=3, ge=1, le=5)
+    provider_retry_initial_delay_seconds: float = Field(
+        default=0.5,
+        ge=0,
+        le=60,
+    )
     openai_api_key: SecretStr | None = Field(
         default=None,
         validate_default=True,

@@ -55,4 +55,7 @@ def test_build_agent_provider_uses_openai_when_selected(
     assert isinstance(provider, OpenAIResponsesProvider)
     assert isinstance(provider, AgentProvider)
     assert provider.model_name == "test-model"
-    client_factory.assert_called_once_with(api_key="test-api-key")
+    client_factory.assert_called_once_with(
+        api_key="test-api-key",
+        max_retries=0,
+    )

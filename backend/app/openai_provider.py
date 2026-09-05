@@ -1,5 +1,6 @@
 import json
 from collections.abc import Sequence
+from inspect import isawaitable
 from typing import Protocol
 from uuid import UUID
 
@@ -63,9 +64,26 @@ class OpenAIResponsesProvider:
 
         self._api_key = api_key.strip()
         self.model_name = model.strip()
+        self._owns_client = client is None
         self._client = (
-            client if client is not None else AsyncOpenAI(api_key=self._api_key)
+            client
+            if client is not None
+            else AsyncOpenAI(
+                api_key=self._api_key,
+                max_retries=0,
+            )
         )
+
+    async def aclose(self) -> None:
+        """Close only the SDK client created and owned by this provider."""
+        if not self._owns_client:
+            return
+        close = getattr(self._client, "close", None)
+        if close is None:
+            return
+        result = close()
+        if isawaitable(result):
+            await result
 
     async def draft_artifact(
         self,

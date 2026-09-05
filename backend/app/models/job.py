@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, String, Text, Uuid
+from sqlalchemy import CheckConstraint, DateTime, Index, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -21,6 +21,12 @@ class Job(Base):
         CheckConstraint(
             "length(trim(description)) > 0",
             name="ck_jobs_description_not_blank",
+        ),
+        Index(
+            "uq_jobs_id_workspace_id",
+            "id",
+            "workspace_id",
+            unique=True,
         ),
     )
 

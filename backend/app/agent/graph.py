@@ -1,12 +1,12 @@
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Literal, Protocol
 from uuid import UUID
 
 from langgraph.graph import END, START, StateGraph
 
-from app.agent.state import ApplicationGraphInput, ApplicationGraphState
-from app.providers import AgentProvider
+from app.agent.state import ApplicationGraphState
+from app.providers import AgentProvider, ProviderRetry, retry_external
 from app.rag.retrieval import RetrievedChunk
 from app.schemas.artifact import ApplicationArtifact, Evidence, Requirement
 from app.validation import validate_artifact
@@ -14,6 +14,10 @@ from app.validation import validate_artifact
 
 class InvalidExtractedRequirementsError(ValueError):
     """Raised when extracted requirements violate workflow invariants."""
+
+
+class InvalidRetrievedEvidenceError(ValueError):
+    """Raised when retrieved evidence violates workflow trust boundaries."""
 
 
 class RequirementExtractor(Protocol):
@@ -49,6 +53,9 @@ def build_application_graph(
     retrieve_chunks_for_requirement: RequirementChunkRetriever,
     verify_retrieved_chunk: RetrievedChunkVerifier,
     max_revisions: int = 2,
+    provider_retry_max_attempts: int = 3,
+    provider_retry_initial_delay_seconds: float = 0.5,
+    on_provider_retry: Callable[[ProviderRetry], Awaitable[None]] | None = None,
 ):
     if max_revisions < 0:
         raise ValueError("max_revisions must be greater than or equal to zero")
@@ -56,6 +63,9 @@ def build_application_graph(
     async def extract(
         state: ApplicationGraphState,
     ) -> dict[str, object]:
+        if "requirements" in state:
+            return {}
+
         extracted = await extract_requirements(state["job_description"])
         requirements = [
             Requirement.model_validate(requirement.model_dump(mode="python"))
@@ -84,6 +94,9 @@ def build_application_graph(
     async def retrieve(
         state: ApplicationGraphState,
     ) -> dict[str, object]:
+        if "retrieved_evidence" in state:
+            return {}
+
         workspace_id = state["workspace_id"]
         document_ids = state["document_ids"]
         allowed_document_ids = set(document_ids)
@@ -101,7 +114,9 @@ def build_application_graph(
                     chunk.workspace_id != workspace_id
                     or chunk.document_id not in allowed_document_ids
                 ):
-                    raise ValueError("Retrieved chunk is outside the workflow scope")
+                    raise InvalidRetrievedEvidenceError(
+                        "Retrieved chunk is outside the workflow scope"
+                    )
 
                 excerpt = await verify_retrieved_chunk(
                     requirement=requirement.model_copy(deep=True),
@@ -112,7 +127,7 @@ def build_application_graph(
                     continue
 
                 if excerpt not in chunk.content:
-                    raise ValueError(
+                    raise InvalidRetrievedEvidenceError(
                         "Verified excerpt is not present in the retrieved chunk"
                     )
 
@@ -135,15 +150,26 @@ def build_application_graph(
     async def draft(
         state: ApplicationGraphState,
     ) -> dict[str, object]:
-        artifact = await provider.draft_artifact(
-            run_id=state["run_id"],
-            requirements=[
-                requirement.model_copy(deep=True)
-                for requirement in state["requirements"]
-            ],
-            evidence=[
-                item.model_copy(deep=True) for item in state["retrieved_evidence"]
-            ],
+        if "artifact" in state:
+            return {}
+
+        async def operation() -> ApplicationArtifact:
+            return await provider.draft_artifact(
+                run_id=state["run_id"],
+                requirements=[
+                    requirement.model_copy(deep=True)
+                    for requirement in state["requirements"]
+                ],
+                evidence=[
+                    item.model_copy(deep=True) for item in state["retrieved_evidence"]
+                ],
+            )
+
+        artifact = await retry_external(
+            operation,
+            max_attempts=provider_retry_max_attempts,
+            initial_delay_seconds=provider_retry_initial_delay_seconds,
+            on_retry=on_provider_retry,
         )
         artifact_snapshot = ApplicationArtifact.model_validate(
             artifact.model_dump(mode="python")
@@ -157,6 +183,13 @@ def build_application_graph(
     def validate(
         state: ApplicationGraphState,
     ) -> dict[str, object]:
+        revision_count = state.get("revision_count", 0)
+        if (
+            "validation" in state
+            and state.get("validated_revision_count") == revision_count
+        ):
+            return {}
+
         validation = validate_artifact(
             state["artifact"],
             expected_run_id=state["run_id"],
@@ -166,23 +199,32 @@ def build_application_graph(
         )
         return {
             "validation": validation,
+            "validated_revision_count": revision_count,
             "node_trace": ["validate"],
         }
 
     async def revise(
         state: ApplicationGraphState,
     ) -> dict[str, object]:
-        artifact = await provider.revise_artifact(
-            run_id=state["run_id"],
-            artifact=state["artifact"].model_copy(deep=True),
-            validation=state["validation"].model_copy(deep=True),
-            requirements=[
-                requirement.model_copy(deep=True)
-                for requirement in state["requirements"]
-            ],
-            evidence=[
-                item.model_copy(deep=True) for item in state["retrieved_evidence"]
-            ],
+        async def operation() -> ApplicationArtifact:
+            return await provider.revise_artifact(
+                run_id=state["run_id"],
+                artifact=state["artifact"].model_copy(deep=True),
+                validation=state["validation"].model_copy(deep=True),
+                requirements=[
+                    requirement.model_copy(deep=True)
+                    for requirement in state["requirements"]
+                ],
+                evidence=[
+                    item.model_copy(deep=True) for item in state["retrieved_evidence"]
+                ],
+            )
+
+        artifact = await retry_external(
+            operation,
+            max_attempts=provider_retry_max_attempts,
+            initial_delay_seconds=provider_retry_initial_delay_seconds,
+            on_retry=on_provider_retry,
         )
         artifact_snapshot = ApplicationArtifact.model_validate(
             artifact.model_dump(mode="python")
@@ -205,6 +247,9 @@ def build_application_graph(
     def terminal(
         state: ApplicationGraphState,
     ) -> dict[str, object]:
+        if "terminal_status" in state:
+            return {}
+
         terminal_status = (
             "succeeded" if state["validation"].passed else "validation_failed"
         )
@@ -215,7 +260,7 @@ def build_application_graph(
 
     builder = StateGraph(
         ApplicationGraphState,
-        input_schema=ApplicationGraphInput,
+        input_schema=ApplicationGraphState,
     )
     builder.add_node("extract", extract)
     builder.add_node("retrieve", retrieve)

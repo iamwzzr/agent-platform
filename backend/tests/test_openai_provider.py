@@ -211,8 +211,10 @@ async def test_openai_provider_builds_default_client_without_network(
             output_parsed=expected_artifact,
         )
     )
+    close = AsyncMock()
     fake_client = SimpleNamespace(
         responses=SimpleNamespace(parse=parse),
+        close=close,
     )
     client_factory = Mock(return_value=fake_client)
     monkeypatch.setattr(
@@ -233,8 +235,31 @@ async def test_openai_provider_builds_default_client_without_network(
     )
 
     assert result == expected_artifact
-    client_factory.assert_called_once_with(api_key="test-api-key")
+    client_factory.assert_called_once_with(
+        api_key="test-api-key",
+        max_retries=0,
+    )
     parse.assert_awaited_once()
+
+    await provider.aclose()
+    close.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_does_not_close_injected_client() -> None:
+    close = AsyncMock()
+    provider = OpenAIResponsesProvider(
+        api_key="test-api-key",
+        model="test-model",
+        client=SimpleNamespace(
+            responses=SimpleNamespace(parse=AsyncMock()),
+            close=close,
+        ),
+    )
+
+    await provider.aclose()
+
+    close.assert_not_awaited()
 
 
 @pytest.mark.asyncio

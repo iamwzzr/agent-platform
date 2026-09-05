@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from typing import Any
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -50,6 +50,16 @@ async def create_tables(target_engine: AsyncEngine) -> None:
 
     async with target_engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        if target_engine.dialect.name == "sqlite":
+            # create_all() cannot add the Stage 7 composite uniqueness rule to
+            # an existing jobs table. This compatible index makes the
+            # AgentRun composite foreign key valid without deleting user data.
+            await connection.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS "
+                    "uq_jobs_id_workspace_id ON jobs (id, workspace_id)"
+                )
+            )
 
 
 settings = Settings()

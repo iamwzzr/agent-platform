@@ -36,5 +36,6 @@ class ApplicationGraphState(ApplicationGraphInput, total=False):
     artifact: ApplicationArtifact
     validation: ArtifactValidation
     revision_count: int
+    validated_revision_count: int
     node_trace: Annotated[list[NodeName], operator.add]
     terminal_status: TerminalStatus

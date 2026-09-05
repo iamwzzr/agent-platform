@@ -9,7 +9,6 @@ from app.db import get_session
 from app.models.job import Job
 from app.schemas.job import JobCreate, JobRead
 
-
 router = APIRouter(
     prefix="/api/v1/workspaces/{workspace_id}/jobs",
     tags=["jobs"],
