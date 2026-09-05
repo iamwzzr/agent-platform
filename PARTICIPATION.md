@@ -1,45 +1,134 @@
-# 个人参与记录
+# Stage 1–9 参与与工程记录
 
-> 只记录学习者亲手完成并能解释的内容。当前项目的空白目录与初始文档由 Codex 创建，不计作学习者编码参与。
+本文件用于区分三件不同的事：
 
-| 日期 | 模块 | 亲手完成的代码 | 测试/命令 | 制造的失败 | 60 秒口述 | Commit |
-| --- | --- | --- | --- | --- | --- | --- |
-| 2026-09-01 | FastAPI 最小垂直切片与自动测试 | 创建 `backend/app/__init__.py`、`backend/app/main.py`、`backend/tests/test_health.py`；通过 uv 命令将 TestClient 的开发依赖从 `httpx` 迁移到 `httpx2` | `uv sync`；`uv run python --version`；`uv run python -c "import fastapi; print(fastapi.__version__)"`；`uv run uvicorn app.main:app --reload`；用 `curl` 验证 200、404、405；`uv run python -m pytest tests/test_health.py -q` | 请求错误 Path `GET /api/v1/health/liv`，观察 404；对正确 Path 发送 `POST`，观察 405；处理 `ModuleNotFoundError: app`；处理 TestClient 的 `httpx` 弃用 warning；将响应临时改为 `broken` 并观察断言 FAILED，再恢复为 `ok` | `uv` 管理 Python 项目环境和依赖；Uvicorn 监听端口并把请求交给 FastAPI；FastAPI 按 HTTP Method + Path 匹配路由并调用处理函数；TestClient 不经过真实端口即可调用 ASGI app。404 表示 Path 不存在，405 表示 Path 存在但 Method 不允许；ERROR 表示测试在导入、收集或准备阶段未正常执行，FAILED 表示测试已经执行但断言不满足；liveness 不依赖数据库或 LLM，以免外部故障造成无意义重启。 | `8019397` |
-| 2026-09-01 | 产品合同与证据边界 | 亲手创建 `docs/PRODUCT_SCOPE.md`，写出目标用户、两个核心输入与防编造约束，并提出 Python 有证据 / 只有 C 证据的对照案例；其余合同字段由 Codex协助整理 | 人工合同测试：有证据时只生成来源支持的事实；无证据时输出 gap；三类失败按 API 前置校验、Provider 调用、draft 后 validator 区分 | 首稿保留约束占位符；把“会 Python”重复当作证据；一度混淆检索无结果、Provider 失败和引用校验失败，后续完成纠正 | 核心输入是职位描述与候选人证据；成功 Run 生成带引用的 `ApplicationArtifact`；无证据产生 gap；固定输入、节点、输出和重试上限使它成为有界 Agent；未通过引用校验的 Artifact 不能成功落库 | `10b7c7a` |
-| 2026-09-01 | 配置与异步数据库基础设施 | 创建 `backend/app/config.py`、`backend/app/db.py`、`backend/tests/test_config.py`、`backend/tests/test_db.py`；实现环境变量配置、AsyncEngine、AsyncSession 工厂、Declarative Base、FastAPI Session dependency 和内存 SQLite 连接测试；通过 uv 添加数据库及异步测试依赖 | 检查 `sqlite+aiosqlite` driver 与 `AsyncSession`；运行 `uv run python -m pytest tests/test_config.py -q`、`uv run python -m pytest tests/test_db.py -q`、`uv run python -m pytest tests -q`；最终结果为 `4 passed in 0.20s` | 默认 URL 预期漏写 `aiosqlite`，观察断言 FAILED 后修正；目标测试文件未保存，观察 file-not-found ERROR；真实执行 `SELECT 1` 暴露缺少 greenlet，改用 `sqlalchemy[asyncio]` 后恢复；误传 `-uv`、`-fuv`，观察 pytest 参数解析 ERROR 后使用正确命令 | URL 是数据库连接入口；Engine 惰性保存连接配置并管理连接池，不等于已经执行数据库操作；Session 表示一组数据库工作；Base 是 ORM 模型登记的共同基类；`SELECT 1` 才触发真实异步 SQL 路径，因此此前才暴露 greenlet 依赖缺失。 | `a160eed` |
-| 2026-09-02 | Job ORM 模型与持久化约束 | 创建 `backend/app/models/__init__.py`、`backend/app/models/job.py`、`backend/tests/test_job_model.py`；实现 UUID 主键、workspace 作用域字段、职位标题/描述、UTC 创建时间、非空白 CheckConstraint，以及跨 Session 持久化和空白描述约束测试 | `uv run python -m pytest tests/test_job_model.py -q` 得到 `2 passed in 0.14s`；提交前全量回归为 `6 passed in 0.24s` | 先写测试并观察 `No module named 'app.models'`；在仓库根目录运行导致 file-not-found；误将目录建成单数 `app/model`，重命名为 `app/models` 后恢复；空白 description 在 commit 时触发 `IntegrityError`，由 `pytest.raises` 验证并 rollback | ORM 将类映射为表、对象映射为行、属性映射为列；`add` 不等于持久化，commit 后新 Session 能读回才证明跨 Session 落库；`nullable=False` 拒绝 NULL，CheckConstraint 拒绝纯空白；失败事务需 rollback 清理；workspace 字段不会自动隔离，查询必须主动限定。 | `8f1052c` |
-| 2026-09-02 | 纯文本 Document ORM 模型 | 创建 `backend/app/models/document.py`、`backend/tests/test_document_model.py` 并更新 `backend/app/models/__init__.py`；实现可跨职位复用的 workspace 级证据文档、UUID、名称、原始文本、UTC 时间与非空白约束 | `uv run python -m pytest tests/test_document_model.py -q` 得到 `2 passed in 0.13s`；提交前全量回归为 `8 passed in 0.21s` | 在仓库根目录运行导致 file-not-found；将测试文件误命名为 `tesrt_document_model.py` 后重命名；测试先行观察 `No module named 'app.models.document'`；空白 content 的 commit 由 `pytest.raises(IntegrityError)` 验证 | Document 属于 Workspace 而非单一 Job，因此同一简历可复用于多个职位；原文保存于 Document，RAG 后续引用具体 Chunk；模型包中 Job/Document 的导入顺序在两者无互相依赖时不影响功能。 | `f22774f` |
-| 2026-09-02 | Job 创建/查询 API 与 workspace 作用域 | 创建 `backend/app/api/jobs.py`、`backend/app/schemas/job.py`、`backend/tests/test_job_api.py` 和包初始化文件，更新 `backend/app/main.py` 注册 Router；实现 JobCreate/JobRead、POST 201、GET 200、UUID/Path/Body 校验以及 `job_id + workspace_id` 查询 | API 测试最终 `4 passed in 0.21s`；去除重复定义后全量回归为 `12 passed in 0.24s`；`git diff --check` 通过 | 路由未实现时 POST 预期 201 实得 404；Schema 文件保存为 0 字节导致 JobCreate/JobRead ImportError，并连带两个测试 collection ERROR；GET 未实现时 owner查询预期 200 实得 404；`schemas/__init__.py` 误复制 39 行 Schema，测试虽绿但代码审查发现两套同名类，随后清空并单独修复；空白 title/非法 workspace 为 422，跨 workspace 为 404 | Pydantic Schema 校验/序列化 HTTP 数据，ORM 映射并持久化数据库记录；200 查询成功、201 创建成功、404 当前作用域资源不存在、422 请求不合法；Path 中的 workspace 只是客户端声明的作用域，不是身份授权，完整系统仍需 authentication 与 workspace membership authorization；测试全绿仍需代码审查发现重复定义。 | 功能 `6d2fcbd`；修复 `23714d9` |
-| 2026-09-02 | Document 创建/查询 API 与 workspace 作用域 | 创建 `backend/app/api/documents.py`、`backend/app/schemas/document.py`、`backend/tests/test_document_api.py`，更新 `backend/app/main.py` 注册 Document Router；实现纯文本 Document POST/GET、Path/Body 校验、跨 Session 持久化及 `document_id + workspace_id` 查询 | Document API 最终 `4 passed in 0.17s`；全量回归最终复验为 `16 passed in 0.21s` | POST 路由未实现时预期 201 实得 404；Router 误命名为单数 `api/document.py`，导致 main 导入失败并连带 3 个测试 collection ERROR，重命名后恢复；GET 未实现时 owner 预期 200 实得 404；修复后空白 content/非法 workspace 为 422，跨 workspace 为 404 | Document 属于 Workspace，可在多个 Job/Run 中复用；POST 将 name/content Schema 转为 ORM 后 commit/refresh，GET 必须同时过滤 document ID 与 workspace；其他 workspace 返回 404；Router 文件用复数表示资源集合，Schema/Model 文件用单数表示类型。 | `138fca6` |
-| 2026-09-02 | FastAPI lifespan 自动建表与真实持久化 | 在 `backend/app/db.py` 实现可注入 AsyncEngine 的 `create_tables()`；在 `backend/app/main.py` 用 `@asynccontextmanager` 接入 FastAPI lifespan，启动时建表、正常关闭或启动失败时 dispose Engine；扩展 `backend/tests/test_db.py` 并创建 `backend/tests/test_lifespan.py`，验证 Job/Document 表注册和正常/异常清理 | `uv run python -m pytest tests/test_lifespan.py -q` 最终 `2 passed`；全量最终 `19 passed in 0.29s`；真实运行 `uv run uvicorn app.main:app --reload`；curl 完成 Job/Document POST 201、owner GET 200、other workspace GET 404，并在 Uvicorn 重启后再次 GET 原 Job 得到 200 | 先观察 `ImportError: cannot import name 'create_tables'`；浏览器请求未定义的 `/` 与 favicon 得到预期 404；主动令 `create_tables` 抛 `RuntimeError`，发现 startup 失败时 dispose await 0 次；首次修复把 `yield` 写在建表之前，造成正常用例失败，随后改成 `try → create_tables → yield → finally dispose` 并全绿；曾在 Uvicorn shutdown 完成前重复输入 `source`，确认只是终端时序问题 | lifespan 是应用级资源生命周期：`yield` 前执行 startup，`yield` 时应用接收请求，`yield` 后或异常时执行 shutdown；`try/finally` 确保失败也释放 Engine，但不吞掉原始异常；`create_all` 只创建缺失表、不负责 schema migration；重启后原 UUID 与 created_at 不变，证明数据在 SQLite 文件而非 Python 内存 | `00cac71` |
-| 2026-09-02 | RAG 文本分块与 DocumentChunk 数据基础 | 创建 `backend/app/rag/chunking.py`、`backend/tests/test_chunking.py`，实现固定 word window、overlap、末尾停止和非法参数校验；创建 `backend/app/models/document_chunk.py`、`backend/tests/test_document_chunk_model.py`，实现 Chunk 顺序、来源、作用域持久化；修改 `db.py`、`document.py`、models 注册和建表测试，启用 SQLite 外键并用复合外键约束 Document/Chunk 处于同一 workspace | splitter 边界 `7 passed`；DocumentChunk 目标测试 `7 passed`；全量最终 `33 passed in 0.25s`；Ruff lint、format 与 `git diff --check` 通过；备份旧 SQLite 库后重建，`.tables` 验证 `document_chunks documents jobs` | 测试先行分别观察 `No module named 'app.rag'` 与 `app.models.document_chunk`；错误导入 IntegrityError 导致 collection ERROR；修正后 orphan 用例出现 `DID NOT RAISE`，定位 SQLite 默认未执行外键；跨 workspace 用例再次 `DID NOT RAISE`，将单列 FK 升级为复合 FK；Ruff 在不同工作目录结果不一致，通过 known-first-party 统一；曾将建表断言误放进 finally，审查后移回 try | overlap 保留跨块边界上下文，到达文本末尾必须 break 以避免纯 overlap 尾块和无限循环；单列 document_id 外键只证明父 Document 存在，复合外键还保证 Chunk/Document workspace 一致；SQLite 需对连接开启 `PRAGMA foreign_keys=ON`；`create_all` 不升级旧 schema，开发可备份重建，生产应使用 Alembic migration | `30f4660` |
-| 2026-09-03 | Document 摄取服务、幂等与事务边界 | 创建 `backend/app/rag/ingestion.py` 和 `backend/tests/test_document_ingestion.py`；按 workspace + document ID 加载来源，调用 splitter 并持久化有序 Chunk；实现统一 not-found、串行幂等复用原 UUID、已有数据冲突和调用方事务控制 | ingestion 目标测试从 1 增至 `5 passed in 0.19s`；全量最终 `38 passed in 0.29s`；Ruff lint `All checks passed!`、format `2 files already formatted` | 先观察 ingestion 模块 ImportError；再分别用尚不存在的 `DocumentNotFoundError`、`DocumentIngestionConflictError` 制造 collection ERROR；重复摄取触发 `UNIQUE constraint failed: document_chunks.document_id, document_chunks.position`，随后改为精确比较 position/content 并复用原行；不同切分参数改为写入前领域冲突；发现并清理两处 trailing spaces | flush 在事务内执行 SQL、生成 ID、检查约束但仍可 rollback，commit 才最终提交；幂等不能 delete/recreate，否则新 UUID 会使旧 citation 失效；三态为无数据创建、完全一致复用、已有但不一致报冲突；领域错误隔离 ORM 细节，让 API 统一映射 404 并避免泄露其他 workspace 的资源存在性 | `b662f97` |
-| 2026-09-03 | Document 摄取 API 与稳定响应合同 | 创建 `backend/app/schemas/document_chunk.py`、`backend/tests/test_document_ingestion_api.py`，修改 `backend/app/api/documents.py`；实现 scoped ingest POST、嵌套 Chunk 响应 Schema、API 事务提交/回滚，以及领域错误到 404/409 的映射；增加 UTC 时间规范化 | 依次验证成功持久化、跨 workspace 拒绝、重复请求、数据冲突；全量从 `39 passed` 增至最终 `42 passed in 0.34s`；提交前 Ruff lint/format、`git diff --check` 和全量 pytest 均通过 | 路由尚未实现时摄取 POST 预期 200 实得 404；严格比较重复请求响应时发现首次时间带 `Z`、SQLite 回读时间无时区，增加 Schema validator 后恢复；VS Code Ruff I001 最终定位为 import 区块后多一个空行；冲突测试预置错误 Chunk 并验证 409 后旧 UUID/内容未被覆盖 | API 代表完整 HTTP 用例并拥有 commit/rollback，Service 只 flush 以保持可组合事务；跨 workspace 与未知资源统一 404 避免泄露；合法请求与当前状态冲突使用 409，422 用于请求校验失败；Service 抛领域异常以脱离 FastAPI，由 API 映射传输协议；SQLite 不保存时区，响应 Schema 将回读时间按约定规范为 UTC；重复摄取复用 UUID 以保护 Artifact/Citation | `db8be36` |
-| 2026-09-03 | 可追溯 RAG 检索与 workspace/document 作用域 | 创建 `backend/app/rag/embedding.py`、`backend/app/rag/retrieval.py`、`backend/app/schemas/retrieval.py`、`backend/app/api/retrieval.py` 及四个对应测试文件，修改 `backend/app/main.py` 注册 Router；实现确定性词频稀疏向量、余弦相似度、Top-K/阈值排序、Chunk 来源字段、异步数据库检索、Document 可见性整批校验及 POST Retrieval API | embedding 最终 `5 passed`，retrieval Service 最终 `4 passed in 0.18s`，后端全量最终 `63 passed in 0.42s`；`git diff --cached --check` 无输出；9 个文件共 876 行新增并提交 | 先观察 embedding/retrieval 模块 ImportError；非法 `min_score` 测试出现 DID NOT RAISE；Service 不接受 `document_ids` 时触发 TypeError；API 未注册时预期 200 实得 404；自相似度得到 `1.0000000000000002`，通过 clamp 修复；owned + foreign ID 曾错误返回 200 部分结果，改为整批 404；清理重复 SQL 时将 `statement` 缩进进条件分支，`document_ids=None` 触发 UnboundLocalError，退回函数主路径后恢复 | 当前 embedding 已是机器可计算的稀疏数值向量，但维度是字面 token、没有训练语义，不能可靠理解同义词；`top_k` 限制最多返回多少 Chunk，`min_score` 设置最低相关门槛；Document 是存在性与 workspace 归属的事实来源，Chunk 可能因尚未摄取而不存在；422 表示请求结构/格式非法，合法但不可访问的 UUID 统一 404 以避免资源泄漏；变量必须在所有会到达其使用点的控制流路径上先赋值 | `114e57b` |
-| 2026-09-04 | 结构化 Artifact、可信引用校验与确定性 Mock Provider | 创建 `backend/app/schemas/artifact.py`、`backend/app/validation.py`、`backend/app/providers.py` 及三个对应测试文件；定义 Requirement/Evidence/Claim/ResumeBullet/Gap/ApplicationArtifact 严格合同，实现外部可信 requirement/evidence、run/workspace、citation、coverage、重复 ID、Gap 与构造后变异校验，并实现可重复的 Provider Protocol/Mock、Requirement 深拷贝和受控 Gap reason code | Artifact Schema `6 passed`、Validator `18 passed`、Mock Provider `2 passed`，三文件合计 `26 passed`；后端全量最终 `89 passed in 0.47s`；Ruff 0.16.5 lint/format、compileall、`git diff --cached --check` 均通过 | 先后观察伪造 citation、跨 requirement 借证据、未覆盖 requirement、Claim/Gap 冲突和篡改 requirements 的红灯；补测发现重复 Claim/Gap IDs 被字典或集合折叠、无关 citation 未被拒绝、跨 Run Artifact 未绑定、已有 Evidence 仍可输出 Gap、Mock 输出与输入共享 Requirement、混合 Claim bullet 因 `any()` 误过、构造后清空列表真空通过，以及自由 Gap reason 不触发 ValidationError；逐项收紧后恢复全绿 | Pydantic 只能检查字段、类型、长度和必填关系，不能证明结构合法的 UUID 或 Claim 为真；Validator 按 workspace 和 trusted requirement 过滤 Evidence，并以 `(requirement_id, document_id, chunk_id)` 绑定事实与来源；有可信 Evidence 生成 Claim，无可信 Evidence 生成 Gap，已有 Evidence 却输出 Gap 必须失败；可信 expected run ID 防替换/重放，入口重验证防构造后清空列表绕过；Gap 使用受控 reason code，避免自由文本夹带未验证事实 | `1bc5e88` |
-| 2026-09-04 | 有界 LangGraph Application Agent | 创建 `backend/app/agent/__init__.py`、`backend/app/agent/state.py`、`backend/app/agent/graph.py` 和 `backend/tests/test_agent_graph.py`；扩展 `backend/app/providers.py` 与 Mock Provider 的 revise 合同；加入并锁定 LangGraph 依赖；实现 extract、retrieve、draft、validate、revise、terminal 六个节点、可信 Evidence 构造、重复/空 requirement 拒绝、条件修订和明确终态 | graph 与 Provider 联合回归最终 `10 passed in 0.28s`；后端全量 `97 passed in 0.60s`；Stage 5 范围 Ruff lint 为 `All checks passed!`、format check 为 `6 files already formatted`；compileall、`uv lock --check`、暂存空白检查均通过 | 先经历 graph 文件误拼导致导入 ERROR；重复 requirement 最初在 retrieval 后才拒绝；失败初稿曾直接进入 terminal；补 `max_revisions` 时出现 unexpected keyword；Mock Provider 缺少 revise、实现时一度返回 None；空 requirement 曾进入 draft；逐项用失败测试定位后修复，并冻结检索/Provider 异常传播与修订预算耗尽行为 | 六个业务节点按 `extract → retrieve → draft → validate → (revise → validate) → terminal` 运行；修订不能证明正确，因此必须再次校验；Evidence 的身份字段来自可信图状态，外部组件只提供或验证内容；提取合同错误前置拒绝，依赖异常原样传播，校验预算耗尽则受控返回 `validation_failed`，三类失败不能混为一谈 | `9681214` |
-| 2026-09-05 | OpenAI Responses Provider 离线适配与安全边界（真实 live 延期） | 创建 `backend/app/openai_provider.py`、`backend/tests/test_openai_provider.py`、`backend/tests/test_provider_factory.py`、`backend/tests/test_openai_live.py`；修改 `backend/app/config.py`、`backend/app/providers.py`、`backend/tests/test_config.py`、`backend/pyproject.toml`、`backend/uv.lock`；加入并锁定 OpenAI SDK 3.8.0，实现 SecretStr 配置、显式 Provider factory、Responses Pydantic parse、draft/revise、completed/parsed 检查、固定脱敏错误、`store=False`、默认 Mock 和显式 opt-in live smoke | OpenAI Provider `8 passed`、配置 `8 passed in 0.02s`、factory `2 passed in 0.30s`；最终后端全量 `113 passed, 1 skipped in 0.79s`；Stage 6 七个 Python 文件 Ruff lint 为 `All checks passed!`、format check 为 `7 files already formatted`；compileall 无输出；`uv lock --check` 为 `Resolved 61 packages in 14ms`；真实 live 用例默认 skip，未联网、未产生费用 | 依次观察模块不存在、Settings 字段不存在、缺 key/model 未拒绝、Provider 不接受注入 client、响应错误类或 revise 缺失、默认 client 未配置、factory 缺失或 OpenAI 分支仍为 NotImplemented、Pydantic parse marker 原样泄漏、incomplete response 与空白 model 未拒绝；提交前审计又发现 model-level ValidationError 会在 JSON/traceback 泄漏假 key，新增红测得到 `1 failed in 0.05s`，改为字段级 validator 后恢复全绿；显式开启 live 但移除 key/model 时按预期在创建客户端前失败 | `SecretStr` 只隐藏字段自身展示，model-level ValidationError 仍可能附带整份原始输入，字段级错误只携带当前字段；Structured Outputs 只保证 `ApplicationArtifact` 的结构和类型，不保证事实、workspace 归属、证据支持或 requirement 完整性，仍须 deterministic validator；默认 Mock、fake client 和 live 开关保证默认无网；真实 API 连接、真实模型输出及其能否通过 validator 尚未验证 | `b6bdaf2` |
+1. 仓库中已经存在并通过验证的工程能力；
+2. 学习者亲手完成、实际运行并能够解释的个人参与；
+3. 经用户授权后由 Codex 直接实施的工程工作。
 
-> 上述阶段记录由 Codex 根据学习者真实完成的代码、终端输出和口述整理。提交前由学习者核对；未亲手完成的工作不得计入个人参与。
+只有同时具备可核验的代码修改、测试命令、故障观察和独立口述，才计作学习者完整参与。Codex 创建或直接修改的代码不会因为已经提交而自动变成学习者亲手成果。
 
-## Stage 7 工程实施记录（Codex 直接实现，不计作学习者亲手编码）
+## 总览
 
-- 日期与目标：2026-09-05；把 Agent 执行过程变成可查询、可恢复且能够安全重放的数据，完成 Run、Event、Artifact、幂等、重试、checkpoint/resume 和后台 API。
-- 实现方式：本阶段由用户明确授权 Codex 直接修改项目，因此下面内容是工程变更记录，不冒充学习者亲手编码、故障实验或已完成口述。对应功能提交为 `9e976ca`（`feat: add recoverable application runs`）。
-- 新增核心文件：`backend/app/models/agent_run.py`、`backend/app/models/run_event.py`、`backend/app/models/artifact_record.py`、`backend/app/run_execution.py`、`backend/app/run_service.py`、`backend/app/application_executor.py`、`backend/app/schemas/run.py`、`backend/app/api/runs.py`。
-- 持久化与状态机：实现 `queued → running → succeeded/validation_failed/failed`；Run 保存 provider/model、attempt/revision、当前节点、checkpoint、retryable error code、开始/结束时间、租约和 execution token；RunEvent 按 run 内 sequence 排序；只有通过 deterministic validator 的 Artifact 才能与 succeeded 状态同事务发布，validation_failed 不保存可发布 Artifact。
-- 幂等与隔离：同一 workspace、同一 Idempotency-Key、同一规范化请求复用原 Run，异参返回冲突；首次并发插入由数据库唯一约束兜底；Job、Document 和 Chunk 在运行前按 workspace 整批校验；AgentRun 使用 `(job_id, workspace_id)` 复合外键，执行器 join 再次限定 workspace；旧 SQLite `jobs` 表通过幂等唯一索引兼容，不删除已有数据。
-- 执行与恢复：接通 Job/DocumentChunk/RAG/LangGraph/Provider/validator 的生产组合；每完成一个图节点就保存 checkpoint 和 `node_completed` 事件；恢复时反序列化可信状态并跳过已完成的 extract/retrieve/draft 等节点；revision 有上限，terminal checkpoint 后若最终事务失败仍可继续恢复。
-- 并发安全：认领 Run 时生成 execution token 和到期租约；heartbeat 定期续租；checkpoint、retry event、失败和成功事务均以当前 token 做原子 fencing；旧 worker 丢失租约后会被取消，不能覆盖新 worker 或发布旧 Artifact；取消执行会落为可恢复的 `execution_interrupted`。
-- Provider 失败策略：关闭 OpenAI SDK 内建重试，应用层统一分类 timeout、connection、409、429、5xx 为有界 transient retry；配置、401/403、quota/billing、非法 structured output 和其他 permanent 错误 fail-fast；支持有界 Retry-After、指数退避和 jitter，只持久化稳定 reason code，不保存原始异常、响应或 API key。外部调用超时仍属于结果未知，不能宣称供应商端 exactly-once 或绝不重复计费。
-- API 与生命周期：新增 start/detail/resume 路由；start/resume 在认领后返回 `202 Accepted + run_id`，单进程 `BackgroundTasks` 继续执行，GET 返回有序事件、恢复信息和 Artifact；响应隐藏 execution token、checkpoint 和内部异常；SQLite 回读的 Run/Event/Artifact 时间统一规范为 UTC；应用关闭时只释放内部拥有的 OpenAI client，并始终释放数据库 Engine。
-- 防御性校验：生产 verifier 会重新查询 Chunk 并核对 workspace、document、chunk ID、position 和 content，拒绝跨 workspace、伪造或变异证据；executor 结果在发布前深拷贝，并用可信 requirements/evidence 重新运行 deterministic validator，防止构造后修改或伪造 passed validation。
-- 自动验收：后端全量 `219 passed, 1 skipped in 4.11s`；唯一 skip 是用户此前明确延期的真实 OpenAI live smoke。Ruff 0.16.5 全量 lint 为 `All checks passed!`，Stage 7 的 35 个 Python 变更文件均已格式化；compileall、`git diff --check`、`uv lock --check` 和私钥/API-key 模式扫描均通过；独立代码复审最终结论为 `No blockers`。
-- 本阶段真实修复的问题：同步等待模型导致客户端拿不到 run ID；跨 workspace Job/Run 仅靠服务校验；旧 SQLite 缺复合候选键；旧 worker 可能采用新 token；heartbeat 与终态提交竞态；同作用域 Chunk 内容伪造；executor DTO 构造后变异；终态数据库写入失败；UTC 时区丢失；默认 OpenAI client 没有关闭路径。以上均已加入针对性测试。
-- 尚待学习者完成：用自己的语言解释 `202 → running → background → checkpoint/event → terminal` 请求链、同 key 为什么只能执行一次、transient/permanent 区别、token fencing 的作用、为什么 validation_failed 不保存 Artifact，以及 BackgroundTasks/真实 OpenAI live/供应商 exactly-once 的边界。完成并核对后，才能在上方学习者参与表增加 Stage 7 个人参与记录。
+| 阶段 | 工程目标 | 参与归属 | 功能提交 | 当前状态 |
+| --- | --- | --- | --- | --- |
+| Stage 1 | FastAPI 基线与 liveness | 学习者亲手实现、测试并完成口述 | `8019397` | 完成 |
+| Stage 2 | 异步数据库、Job/Document 与 scoped API | 学习者分模块亲手实现、测试并完成口述 | `a160eed` 至 `00cac71` | 完成 |
+| Stage 3 | Chunk、幂等摄取与 scoped RAG | 学习者分模块亲手实现、测试并完成口述 | `30f4660`、`b662f97`、`db8be36`、`114e57b` | 完成 |
+| Stage 4 | 结构化 Artifact、Mock 与可信校验 | 学习者亲手实现、测试并完成口述 | `1bc5e88` | 完成 |
+| Stage 5 | 有界 LangGraph | 学习者亲手实现、测试并完成口述 | `9681214` | 完成 |
+| Stage 6 | OpenAI Responses Provider adapter | 学习者完成离线实现、测试与口述 | `b6bdaf2` | 离线适配完成；真实 live 延期 |
+| Stage 7 | Run、事件、幂等、重试与恢复 | Codex 经授权直接实施；不计学习者亲手编码 | `9e976ca` | 工程完成；学习者口述待补 |
+| Stage 8 | 固定评测框架与 3-case smoke | Codex 经授权直接实施；无个人参与门禁证据 | `a787fd8` | 初期 smoke 完成；正式 10-case 待办 |
+| Stage 9 | React 本地操作台 | Codex 多代理经授权直接实施；学习者完成手工运行检查 | `8a5f307` | 本地 Mock 闭环完成 |
+
+## Stage 1 · FastAPI 基线
+
+- **日期与目标**：2026-09-01；建立最小 HTTP 垂直切片，让应用能够启动并返回稳定 liveness 响应。
+- **参与归属**：学习者亲手创建 `backend/app/__init__.py`、`backend/app/main.py` 和 `backend/tests/test_health.py`，并通过 uv 调整 TestClient 开发依赖。
+- **核心实现**：`GET /api/v1/health/live` 返回 `200 {"status":"ok"}`；liveness 不访问数据库、Provider 或外部服务。
+- **验证与故障观察**：实际运行 Uvicorn、curl 和 pytest；观察错误路径 404、错误 Method 405、`ModuleNotFoundError: app`、httpx 弃用提示，以及临时把响应改成 `broken` 后的断言失败。
+- **可解释的判断**：能够区分 ERROR 与 FAILED、404 与 405，并解释为什么 liveness 必须与外部依赖解耦。
+- **相关提交**：功能 `8019397`；参与记录 `9f60625`。
+
+## Stage 2 · 数据库与领域 API
+
+- **日期与目标**：2026-09-01 至 2026-09-02；建立可靠的持久化基础、Job/Document 领域模型和 workspace-scoped HTTP 入口。
+- **参与归属**：学习者分模块亲手实现 Settings、AsyncEngine/AsyncSession、Declarative Base、Job/Document ORM、Pydantic Schema、API Router 和 FastAPI lifespan，并编写对应测试。
+- **核心实现**：跨 Session SQLite 持久化、UUID/UTC 字段、非空白约束、Job/Document POST/GET、404/422 语义、workspace 查询限定、启动建表和关闭释放 Engine。
+- **验证与故障观察**：观察缺少 `aiosqlite` driver、greenlet 依赖、错误目录和文件名、空白字段 `IntegrityError`、重复 Schema 定义、未注册 Router，以及 lifespan 中 `yield` 顺序错误；通过红灯和代码审查逐项恢复。
+- **可解释的判断**：Engine 不等于已执行数据库操作，Session 表示事务工作单元；`nullable=False` 与 CheckConstraint 作用不同；workspace path 是数据作用域而不是认证；`create_all` 不能替代 migration。
+- **相关提交**：`a160eed`、`8f1052c`、`f22774f`、`6d2fcbd`、`23714d9`、`138fca6`、`00cac71`，以及对应 participation commits。
+
+## Stage 3 · 文档摄取与 scoped RAG
+
+- **日期与目标**：2026-09-02 至 2026-09-03；把纯文本证据转成可追溯 Chunk，并在限定 workspace/document 的范围内检索。
+- **参与归属**：学习者亲手实现分块、DocumentChunk ORM、幂等 ingestion、确定性稀疏 embedding/ranking、retrieval service/API 和自动测试。
+- **核心实现**：固定 word window + overlap、Chunk position/source、复合外键、重复摄取复用原 UUID、Top-K/min-score 排序、Document 可见性整批校验和来源可追溯响应。
+- **验证与故障观察**：观察 splitter 尾块/循环边界、SQLite 默认未启用外键、单列外键不能保证 workspace 一致、重复摄取唯一约束、首次/回读 UTC 表示差异、浮点自相似度超过 1，以及缩进错误导致 `UnboundLocalError`。
+- **可解释的判断**：幂等不能 delete/recreate，否则旧 citation 会失效；Document 是存在性与归属事实来源；当前数值向量基于字面 token，不能宣称真实语义检索质量。
+- **相关提交**：`30f4660`、`b662f97`、`db8be36`、`114e57b`。
+
+## Stage 4 · 结构化 Artifact 与可信校验
+
+- **日期与目标**：2026-09-04；建立 Agent 输入输出合同，并阻止结构合法但事实不可信的材料发布。
+- **参与归属**：学习者亲手创建 Artifact schemas、deterministic validator、Provider Protocol/Mock 和对应测试。
+- **核心实现**：Requirement、Evidence、Claim、ResumeBullet、Gap、Citation、ApplicationArtifact；以可信 run/workspace/requirements/evidence 校验引用、coverage、重复 ID、Gap 和构造后变异。
+- **验证与故障观察**：主动制造伪造 citation、跨 requirement 借证据、未覆盖 requirement、Claim/Gap 冲突、重复 ID、无关 citation、错误 run ID、已有 Evidence 却输出 Gap，以及构造后清空列表的红灯。
+- **可解释的判断**：Pydantic 只证明字段和类型满足结构，不能证明内容真实；只有外部可信 Evidence 与确定性发布前校验才能建立事实边界。
+- **相关提交**：功能 `1bc5e88`；参与记录 `cb33fba`。
+
+## Stage 5 · 有界 LangGraph
+
+- **日期与目标**：2026-09-04；把提取、检索、起草、校验和修订编排成可观察且不会无限循环的状态图。
+- **参与归属**：学习者亲手创建 `backend/app/agent/state.py`、`graph.py`、图测试，并扩展 Mock Provider 的 revise 合同。
+- **核心实现**：`extract → retrieve → draft → validate → revise/terminal`；重复/空 requirement 前置拒绝，修订后重新校验，耗尽预算返回 `validation_failed`。
+- **验证与故障观察**：经历 graph 文件拼写错误、重复 requirement 拒绝太晚、失败 draft 直接进入 terminal、`max_revisions` 参数缺失、Mock Provider 没有 revise 或返回 `None`，以及空 requirement 进入 draft。
+- **可解释的判断**：修订不能保证正确，因此必须回到 validate；提取合同错误、依赖异常和校验预算耗尽必须保留不同失败语义。
+- **相关提交**：功能 `9681214`；参与记录 `28c0835`。
+
+## Stage 6 · OpenAI Responses Provider 离线适配
+
+- **日期与目标**：2026-09-05；在不破坏默认离线测试的前提下建立真实 Provider adapter 和配置边界。
+- **参与归属**：学习者完成 adapter、配置、factory、fake-client 测试和安全口述；真实 OpenAI live 经明确决定延期。
+- **核心实现**：Responses Pydantic parse、draft/revise、completed/parsed 检查、`store=False`、SecretStr、显式 Provider factory、默认 Mock、固定脱敏错误和 opt-in live smoke。
+- **验证与故障观察**：观察模块/字段/factory/revise 缺失、client 注入参数错误、空白 key/model 未拒绝、incomplete response 被接受、Pydantic marker 泄漏，以及 model-level ValidationError 携带原始假 key；改用字段级校验并补安全红测。
+- **可解释的判断**：SecretStr 只隐藏字段自身显示；Structured Outputs 只保证结构和类型，不保证事实、workspace、引用或 coverage；默认 Mock 和显式 live 开关阻止测试意外联网。
+- **相关提交**：功能 `b6bdaf2`；离线参与记录 `d8d7de6`。
+- **未验证边界**：真实 API 连接、真实模型输出、费用，以及真实输出能否通过 deterministic validator。
+
+## Stage 7 · Run、事件与异常恢复
+
+- **日期与目标**：2026-09-05；把一次 Agent 执行变成可查询、可安全恢复、可从 checkpoint 继续的持久化 Run。
+- **参与归属**：本阶段由用户明确授权 Codex 直接修改，属于工程实施记录，不计作学习者亲手编码、故障实验或已完成口述。
+- **核心实现**：AgentRun、RunEvent、ArtifactRecord、`queued → running → succeeded/validation_failed/failed` 状态机、202 BackgroundTasks、幂等启动、错误分类、有界 retry、逐节点 checkpoint/resume、租约、heartbeat 和 execution-token fencing。
+- **隔离与发布**：Job/Document/Chunk 运行前整批按 workspace 校验；执行路径 verifier 重新核对 Chunk identity/content；只有 deterministic validator 通过的 Artifact 才与 succeeded 状态同事务发布。
+- **验证与修复**：工程验收记录覆盖同步等待拿不到 run ID、跨 workspace 关系、旧 worker token、heartbeat/终态竞态、证据内容伪造、executor DTO 变异、终态写失败、UTC 和默认 OpenAI client 生命周期。
+- **可解释边界**：同 key/同请求复用 Run，异参冲突；transient 有界重试、permanent fail-fast；BackgroundTasks 不是 durable worker，外部调用结果未知时也不能保证供应商端 exactly-once。
+- **相关提交**：功能 `9e976ca`；工程记录 `925e256`。
+- **学习者待补**：独立解释 `202 → running → background → checkpoint/event → terminal`、幂等、retry 分类、token fencing、`validation_failed` 不发布 Artifact 以及 exactly-once 边界。
+
+## Stage 8 · 固定评测 smoke
+
+- **日期与目标**：2026-09-05；为检索、引用、coverage、gap 和 guardrail 建立可重复的离线回归门禁。
+- **参与归属**：本阶段由用户授权 Codex 直接实施；当前没有学习者亲手代码、测试故障或口述记录，不能计作完整个人参与。
+- **核心实现**：版本化 `smoke-v1`、隔离临时 SQLite/workspace、生产 ingestion/retrieval/Run/Graph/validator/persistence 路径、文本/JSON CLI 和退出码 `0/1/2`。
+- **三个案例**：可信证据生成 cited Artifact；无证据生成明确 Gap；schema-valid forged citation 最终 `validation_failed` 且不发布 ArtifactRecord。
+- **验证结果**：当前 evaluator 为 `3/3`；retrieval recall@5、citation validity/coverage、requirement coverage、gap accuracy 和 guardrail 均满足冻结阈值。
+- **相关提交**：`a787fd8`。
+- **未完成边界**：这只是开发初期 3-case smoke，不是路线图要求的正式不可变 10-case；也不衡量真实模型质量、延迟、token 或成本。
+
+## Stage 9 · React 本地操作台
+
+- **日期与目标**：2026-09-05；把可查询、可恢复的后端 Run 暴露为用户可操作的本地产品闭环。
+- **参与归属**：React/Vite 前端及后端可信读桥接由 Codex 多代理经用户授权直接实施，不计作学习者亲手编码；学习者完成了本地服务启动、结果截图和故障复验。
+- **核心实现**：Job → Document → ingestion → Run 创建链、单一 Idempotency-Key、可刷新 Run URL、串行自调度轮询、页面隐藏暂停与请求取消、五类状态、已知运行事件的人类可读展示与未知事件安全 fallback、Artifact/引用原文/Gap、`terminal_validation`、`can_resume` 和条件 Resume。
+- **可信 UI 边界**：后端重新限定并批量提供 `citation_sources`；前端不渲染原始 Event JSON、不自行猜租约状态，网络错误保留最后可信快照。
+- **验证结果**：3 个 MSW workflow smoke 与 2 个状态展示测试通过，TypeScript、ESLint 和 production build 通过；本地 Mock 前后端真实联调及浏览器刷新恢复通过。
+- **真实故障观察**：首次手工保存 Role 时，Vite 5173 正常但 Uvicorn 8000 未启动，代理返回服务错误；启动后端并只重试当前步骤后，Attempt 1 到达 `COMPLETE / Application ready`，显示 1/1 verified、可信 `resume.txt` excerpt、8 条事件和 0 gaps。
+- **相关提交**：`8a5f307`。
+- **未完成边界**：这是本地 Mock 操作台，不是公网部署；没有认证、历史列表、文件上传、WebSocket、PostgreSQL、durable worker 或真实 OpenAI 验收。
+
+## 当前综合验收
+
+以下结果于 2026-09-06 在本地重新验证：
+
+- 后端：`235 passed, 1 skipped`；唯一 skip 是明确延期的 OpenAI live smoke。
+- Stage 8 evaluator：`3/3`，适用质量指标及 guardrail 均为 `1.0`。
+- 前端：`5 passed`，typecheck、ESLint 和 production build 通过。
+- Stage 9 手工链路：前端 5173、后端 8000、Vite proxy 和 Run detail 均返回成功；结果页刷新恢复且控制台无 error/warn。
+
+## 个人参与边界与待补门禁
+
+- Stage 1–6 可以按本文件记录计作学习者亲手实践；Stage 6 只能表述为“OpenAI Provider 离线适配”，不能表述为真实模型接通。
+- Stage 7 代码由 Codex 直接实施，学习者口述仍待补；在完成口述之前，不能把该阶段标记为学习者完整参与。
+- Stage 8–9 当前只有工程成果；Stage 9 可计一次真实手工运行与故障观察，但不足以证明亲手编码。
+- 若要把 Stage 7–9 计入完整个人参与，学习者仍需各自完成一个有意义的代码修改、一个自动测试、一次可解释失败和 60 秒口述，并产生独立提交。
+
+## 前置产品合同
+
+Stage 0 的产品核心句和“Python 有证据 / 只有 C 证据”的对照案例由学习者提出；其余边界由 Codex 协助整理。对应产品合同为 `docs/PRODUCT_SCOPE.md`，提交 `10b7c7a`，参与记录提交 `1711e56`。
 
 ## 后续阶段记录模板
 
-每完成一个模块，复制下面这一行并替换所有占位内容。文件路径、命令、失败现象和 Commit 必须能够在项目中核验。
-
-| YYYY-MM-DD | 模块名称与目标 | 我亲手创建或修改的精确文件路径；实现了什么 | 我实际运行的命令；关键结果 | 我主动制造或真实遇到的失败；如何定位与恢复 | 我能独立解释的请求链、设计边界和失败语义 | 提交短哈希 |
+每完成一个模块，补充：日期与目标、参与归属、精确文件、实际命令与结果、真实失败及修复、能够独立解释的边界、功能提交。未经核验的内容不得写入个人参与。
