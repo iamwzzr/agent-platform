@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import CheckConstraint, DateTime, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db import Base
+from app.db_core import Base
 
 
 class Document(Base):

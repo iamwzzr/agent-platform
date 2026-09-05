@@ -1,0 +1,118 @@
+{
+  "version": "smoke-v1",
+  "suite_kind": "smoke",
+  "thresholds": {
+    "retrieval_recall_at_5": 0.8,
+    "citation_validity": 1.0,
+    "citation_coverage": 1.0,
+    "requirement_coverage": 1.0,
+    "gap_accuracy": 1.0
+  },
+  "cases": [
+    {
+      "case_id": "grounded-evidence",
+      "case_kind": "quality",
+      "provider_scenario": "deterministic",
+      "job": {
+        "title": "Backend Engineer",
+        "description": "Build Python FastAPI services."
+      },
+      "documents": [
+        {
+          "document_ref": "resume",
+          "name": "resume.txt",
+          "content": "Build Python FastAPI services."
+        }
+      ],
+      "expected": {
+        "terminal_status": "succeeded",
+        "requirements": [
+          {
+            "id": "req-1",
+            "text": "Build Python FastAPI services.",
+            "priority": "high"
+          }
+        ],
+        "relevant_evidence": [
+          {
+            "requirement_id": "req-1",
+            "document_ref": "resume",
+            "chunk_position": 0
+          }
+        ],
+        "supported_requirement_ids": ["req-1"],
+        "gap_requirement_ids": [],
+        "artifact_record_count": 1,
+        "validation_failure_fields": []
+      }
+    },
+    {
+      "case_id": "no-grounded-evidence",
+      "case_kind": "quality",
+      "provider_scenario": "deterministic",
+      "job": {
+        "title": "Platform Engineer",
+        "description": "Operate Kubernetes clusters."
+      },
+      "documents": [
+        {
+          "document_ref": "resume",
+          "name": "resume.txt",
+          "content": "Led retail inventory reconciliation."
+        }
+      ],
+      "expected": {
+        "terminal_status": "succeeded",
+        "requirements": [
+          {
+            "id": "req-1",
+            "text": "Operate Kubernetes clusters.",
+            "priority": "high"
+          }
+        ],
+        "relevant_evidence": [],
+        "supported_requirement_ids": [],
+        "gap_requirement_ids": ["req-1"],
+        "artifact_record_count": 1,
+        "validation_failure_fields": []
+      }
+    },
+    {
+      "case_id": "forged-citation-rejected",
+      "case_kind": "guardrail",
+      "provider_scenario": "forged_citation",
+      "job": {
+        "title": "Data Engineer",
+        "description": "Design reliable SQLAlchemy models."
+      },
+      "documents": [
+        {
+          "document_ref": "resume",
+          "name": "resume.txt",
+          "content": "Design reliable SQLAlchemy models."
+        }
+      ],
+      "expected": {
+        "terminal_status": "validation_failed",
+        "requirements": [
+          {
+            "id": "req-1",
+            "text": "Design reliable SQLAlchemy models.",
+            "priority": "high"
+          }
+        ],
+        "relevant_evidence": [
+          {
+            "requirement_id": "req-1",
+            "document_ref": "resume",
+            "chunk_position": 0
+          }
+        ],
+        "supported_requirement_ids": ["req-1"],
+        "gap_requirement_ids": [],
+        "artifact_record_count": 0,
+        "validation_failure_fields": ["invalid_citation_chunk_ids"]
+      }
+    }
+  ]
+}

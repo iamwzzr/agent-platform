@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import JSON, DateTime, ForeignKey, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db import Base
+from app.db_core import Base
 
 
 class ArtifactRecord(Base):
