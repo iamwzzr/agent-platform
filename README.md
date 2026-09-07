@@ -4,8 +4,6 @@
 
 Agent Platform 是一条面向求职材料生成的有界 Agent workflow。用户提供职位描述和自己的履历、项目或作品证据；系统提取职位要求，在当前 workspace 中检索相关片段，生成结构化申请材料，并在发布前逐项校验事实、引用和需求覆盖。在成功发布的 ApplicationArtifact 中，每条候选人 claim 都必须有可信证据；没有证据的职位要求必须记录为 evidence gap，否则整个草稿会被拒绝发布。
 
-当前版本已覆盖 Stage 1–9 的本地开发切片，默认使用可重复的 Deterministic Mock Provider。真实 OpenAI live、正式 10-case 固定评测和 Stage 10 生产部署仍未完成。
-
 ## 为什么不是普通聊天封装
 
 - **Grounded generation**：成功发布的每条候选人 claim 都必须追溯到当前 workspace 中的 Document/Chunk。
@@ -138,6 +136,22 @@ npm run dev
 
 打开 [http://127.0.0.1:5173](http://127.0.0.1:5173)。Vite 会把开发期 `/api` 请求代理到本地 8000 端口。创建页目前接收粘贴的纯文本证据，不支持 PDF/Word 文件上传。
 
+### 3. Docker Compose（替代以上两个本地进程）
+
+本地容器切片固定使用 Mock Provider，以非 root FastAPI 和 Nginx 两个容器运行，并把 SQLite 数据保存在 Docker named volume：
+
+```bash
+docker compose up --build --wait
+```
+
+打开 [http://127.0.0.1:8080](http://127.0.0.1:8080)。完整的无缓存构建、健康检查、非 root 和基础 HTTP 验收可运行：
+
+```bash
+./scripts/docker-smoke.sh
+```
+
+普通 `docker compose down` 会保留数据；`docker compose down -v` 会永久删除本地演示数据库。拓扑、持久化复验和当前边界见 [Docker 一日版本](docs/DOCKER.md)。
+
 ## 主要 HTTP 接口
 
 所有业务接口都以 workspace 为数据作用域；启动后可在 [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) 查看交互式 OpenAPI 文档。
@@ -258,8 +272,5 @@ agent-platform/
 - [开发路线与阶段状态](docs/DEVELOPMENT_ROADMAP.md)
 - [Stage 8 固定评测](docs/EVALUATION.md)
 - [Stage 9 React 操作台](docs/FRONTEND.md)
+- [Docker 一日版本](docs/DOCKER.md)
 - [学习参与与工程记录](PARTICIPATION.md)
-
-## Provenance
-
-这是对 `agent-platform-demo` 的独立学习复现，demo 只作为对照答案和最终验收夹具，不整文件复制。仓库能力、个人参与和 Codex 直接实施是三个不同概念；学习者真实参与以 [PARTICIPATION.md](PARTICIPATION.md) 中可核验的代码、命令、故障观察和口述记录为准。

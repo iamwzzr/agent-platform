@@ -1,0 +1,59 @@
+name: agent-platform
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      AGENT_PLATFORM_DATABASE_URL: sqlite+aiosqlite:////data/agent-platform.db
+      AGENT_PLATFORM_LLM_PROVIDER: mock
+    volumes:
+      - agent_data:/data
+    expose:
+      - "8000"
+    init: true
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          response = urllib.request.urlopen(
+          "http://127.0.0.1:8000/api/v1/health/live", timeout=2);
+          assert response.status == 200
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${AGENT_PLATFORM_HTTP_PORT:-8080}:8080"
+    init: true
+    stop_grace_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          wget -qO- http://127.0.0.1:8080/api/v1/health/live
+          | grep -q '"status":"ok"'
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  agent_data:
