@@ -22,7 +22,7 @@ Agent Platform 是一条面向求职材料生成的有界 Agent workflow。用�
 5. 使用 LangGraph 编排 extract、retrieve、draft、validate、bounded revise 和 terminal。
 6. 通过 Run、RunEvent、ArtifactRecord、checkpoint、幂等键和条件 Resume 管理执行生命周期。
 7. 隔离 Deterministic Mock 与 OpenAI Responses Provider adapter，统一脱敏错误和重试语义。
-8. 在 React 工作台中完成创建、轮询、刷新恢复、事件查看、引用核验和失败恢复。
+8. 在 React 工作台中完成创建、岗位列表搜索/分页、轮询、刷新恢复、事件查看、引用核验和失败恢复。
 9. 运行版本化离线评测，输出 retrieval、citation、coverage、gap 和 guardrail 指标。
 
 ## 工作流
@@ -152,6 +152,8 @@ docker compose up --build --wait
 
 普通 `docker compose down` 会保留数据；`docker compose down -v` 会永久删除本地演示数据库。拓扑、持久化复验和当前边界见 [Docker 一日版本](docs/DOCKER.md)。
 
+服务启动后的日志、端口、Linux 文件权限及连接排查，可按 [Linux / Docker 实操](docs/LINUX_DOCKER_LAB.md) 练习；`bash scripts/docker-ops-lab.sh` 使用独立练习资源自动验证 8 项操作，并保留现有应用数据。
+
 ## 主要 HTTP 接口
 
 所有业务接口都以 workspace 为数据作用域；启动后可在 [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) 查看交互式 OpenAPI 文档。
@@ -261,8 +263,8 @@ agent-platform/
 - SQLite `create_all` 不是 migration 系统；PostgreSQL/Alembic 尚未实现。
 - Run 幂等无法保证供应商端 exactly-once；Job/Document 创建结果未知时，重试仍可能产生重复记录。
 - 正式 Stage 8 需要新建不可变的 10-case 数据集，不能原地扩写 `smoke-v1`。
-- Stage 9 没有账号、认证、历史列表、文件上传、WebSocket、自动职位搜索或自动投递。
-- Stage 10 将补 readiness、Secret/CORS、PostgreSQL migration、Docker Compose 和 CI；durable worker/生产任务队列仍属于后续部署 backlog。
+- Stage 9 没有账号、认证、Run 历史列表、文件上传、WebSocket、自动职位搜索或自动投递；新增的岗位列表严格限制在单一 workspace。
+- Docker Compose 本地演示、非 root 容器和 named-volume 持久化已完成；readiness、生产 Secret/CORS、PostgreSQL migration、CI、durable worker/生产任务队列仍属于后续部署 backlog。
 
 系统不会替招聘方做录用判断，也不保证生成材料获得面试；所有输出必须由用户在使用前审核。
 

@@ -58,6 +58,10 @@ cp .env.example .env
 
 成功后脚本会保留服务，供浏览器完成业务验收；失败时会打印脱敏日志，但不会删除容器或数据卷。
 
+## Linux 与运维练习
+
+按 [Linux / Docker 实操](LINUX_DOCKER_LAB.md) 手动练习服务启动、日志/端口、权限与连接排查；运行 `bash scripts/docker-ops-lab.sh` 可自动复现并验证 8 项练习。它复用已有镜像，在独立临时容器与专用数据卷里制造权限和网络故障，结束时清理练习资源，保留应用服务与数据。
+
 ## 数据持久化验收
 
 1. 在浏览器完成 Job → Document → ingestion → Run → Artifact，并保存 Run 详情 URL。

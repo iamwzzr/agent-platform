@@ -27,6 +27,15 @@ export function AppHeader({ workspaceId, backTo }: AppHeaderProps) {
               <span className="workspace-chip__value">{workspaceId}</span>
             </span>
           ) : null}
+          {workspaceId ? (
+            <Link
+              className="quiet-link"
+              to={`/workspaces/${encodeURIComponent(workspaceId)}/jobs`}
+            >
+              <span aria-hidden="true">☷</span>
+              Saved roles
+            </Link>
+          ) : null}
           {backTo ? (
             <Link className="quiet-link" to={backTo}>
               <span aria-hidden="true">←</span>

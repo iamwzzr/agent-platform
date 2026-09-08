@@ -3,6 +3,7 @@ import type {
   DocumentIngestionRead,
   DocumentRead,
   JobCreate,
+  JobListRead,
   JobRead,
   RunCreate,
   RunRead,
@@ -40,6 +41,32 @@ export function getJob(
   return requestJson<JobRead>(
     `${workspacePath(workspaceId)}/jobs/${encodeURIComponent(jobId)}`,
     { signal: control.signal },
+  );
+}
+
+export interface ListJobsOptions extends RequestControl {
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function listJobs(
+  workspaceId: string,
+  options: ListJobsOptions = {},
+): Promise<JobListRead> {
+  const { q, limit = 20, offset = 0, signal } = options;
+  const search = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  const query = q?.trim();
+  if (query) {
+    search.set("q", query);
+  }
+
+  return requestJson<JobListRead>(
+    `${workspacePath(workspaceId)}/jobs?${search.toString()}`,
+    { signal },
   );
 }
 
@@ -109,6 +136,7 @@ export function resumeRun(
 export const agentPlatformApi = {
   createJob,
   getJob,
+  listJobs,
   createDocument,
   ingestDocument,
   startRun,

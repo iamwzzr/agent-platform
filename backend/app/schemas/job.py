@@ -36,3 +36,19 @@ class JobRead(BaseModel):
     title: str
     description: str
     created_at: datetime
+
+
+class JobSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    workspace_id: str
+    title: str
+    created_at: datetime
+
+
+class JobListRead(BaseModel):
+    items: list[JobSummary]
+    limit: int
+    offset: int
+    has_more: bool

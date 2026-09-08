@@ -1,13 +1,13 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.models.job import Job
-from app.schemas.job import JobCreate, JobRead
+from app.schemas.job import JobCreate, JobListRead, JobRead
 
 router = APIRouter(
     prefix="/api/v1/workspaces/{workspace_id}/jobs",
@@ -27,6 +27,10 @@ WorkspaceId = Annotated[
         pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$",
     ),
 ]
+
+SearchQuery = Annotated[str | None, Query(max_length=200)]
+PageLimit = Annotated[int, Query(ge=1, le=100)]
+PageOffset = Annotated[int, Query(ge=0)]
 
 
 @router.post(
@@ -50,6 +54,37 @@ async def create_job(
     await session.refresh(job)
 
     return job
+
+
+@router.get(
+    "",
+    response_model=JobListRead,
+)
+async def list_jobs(
+    workspace_id: WorkspaceId,
+    session: SessionDependency,
+    q: SearchQuery = None,
+    limit: PageLimit = 20,
+    offset: PageOffset = 0,
+) -> JobListRead:
+    query = q.strip() if q else ""
+    statement = select(Job).where(Job.workspace_id == workspace_id)
+    if query:
+        statement = statement.where(Job.title.contains(query, autoescape=True))
+
+    result = await session.execute(
+        statement.order_by(Job.created_at.desc(), Job.id.desc())
+        .limit(limit + 1)
+        .offset(offset)
+    )
+    jobs = list(result.scalars())
+
+    return JobListRead(
+        items=jobs[:limit],
+        limit=limit,
+        offset=offset,
+        has_more=len(jobs) > limit,
+    )
 
 
 @router.get(

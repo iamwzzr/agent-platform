@@ -21,6 +21,20 @@ export interface JobRead extends JobCreate {
   created_at: ISODateTime;
 }
 
+export interface JobSummary {
+  id: UUID;
+  workspace_id: string;
+  title: string;
+  created_at: ISODateTime;
+}
+
+export interface JobListRead {
+  items: JobSummary[];
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
 export interface DocumentCreate {
   name: string;
   content: string;
