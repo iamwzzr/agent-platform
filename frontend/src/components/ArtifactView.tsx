@@ -78,11 +78,11 @@ export function ArtifactView({ artifact }: ArtifactViewProps) {
     <section className="artifact" aria-labelledby="artifact-heading">
       <div className="artifact__header">
         <div>
-          <p className="eyebrow">Application ready</p>
-          <h2 id="artifact-heading">Grounded application</h2>
+          <p className="eyebrow">Validated material package</p>
+          <h2 id="artifact-heading">{content.resume_bullets.length ? "Evidence-backed material" : "Evidence gap report"}</h2>
           <p>
             {supportedCount} of {content.requirements.length} role requirements have
-            verified candidate evidence.
+            linked source excerpts. Check their relevance and accuracy yourself.
           </p>
         </div>
         <span

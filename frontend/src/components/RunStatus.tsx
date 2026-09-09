@@ -97,7 +97,18 @@ export function RunStatus({
   resumeError,
   onResume,
 }: RunStatusProps) {
-  const presentation = STATUS_PRESENTATION[run.status];
+  const noResumeBullets =
+    run.status === "succeeded" &&
+    run.artifact !== null &&
+    run.artifact.content.resume_bullets.length === 0;
+  const presentation = noResumeBullets
+    ? {
+        ...STATUS_PRESENTATION.succeeded,
+        headline: "Evidence review complete",
+        description:
+          "The package passed validation but contains no résumé bullets. Review the evidence gaps before preparing an application.",
+      }
+    : STATUS_PRESENTATION[run.status];
   const description =
     run.status === "failed"
       ? failureDescription(run.error_code)

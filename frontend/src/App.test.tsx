@@ -90,6 +90,7 @@ describe("Stage 9 application workbench smoke", () => {
     ).toBeInTheDocument();
     expectOneCreateChain(scenario.calls);
     expect(scenario.calls.getRun).toBeGreaterThanOrEqual(2);
+    expect(screen.getByLabelText("Run provider")).toHaveTextContent("not a live LLM");
     expect(screen.getAllByText(EVIDENCE_TEXT).length).toBeGreaterThan(0);
 
     await user.click(
@@ -111,11 +112,13 @@ describe("Stage 9 application workbench smoke", () => {
     server.use(...scenario.handlers);
     await fillAndStartApplication();
 
-    await waitForApplicationReady();
+    await screen.findByRole("heading", { name: "Evidence review complete" });
 
     expect(
-      screen.getByRole("heading", { name: /Application ready/i }),
+      screen.getByRole("heading", { name: "Evidence gap report" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Application ready/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/contains no résumé bullets/)).toBeInTheDocument();
     expectOneCreateChain(scenario.calls);
     expect(
       screen.getAllByText("Operate Kubernetes clusters.").length,

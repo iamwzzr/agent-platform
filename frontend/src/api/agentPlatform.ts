@@ -8,6 +8,7 @@ import type {
   RunCreate,
   RunRead,
   UUID,
+  WorkspaceOverview,
 } from "./contracts";
 import { requestJson } from "./client";
 
@@ -29,6 +30,15 @@ export function createJob(
   return requestJson<JobRead>(`${workspacePath(workspaceId)}/jobs`, {
     method: "POST",
     json: payload,
+    signal: control.signal,
+  });
+}
+
+export function getWorkspaceOverview(
+  workspaceId: string,
+  control: RequestControl = {},
+): Promise<WorkspaceOverview> {
+  return requestJson<WorkspaceOverview>(`${workspacePath(workspaceId)}/overview`, {
     signal: control.signal,
   });
 }
@@ -134,6 +144,7 @@ export function resumeRun(
 }
 
 export const agentPlatformApi = {
+  getWorkspaceOverview,
   createJob,
   getJob,
   listJobs,

@@ -193,3 +193,35 @@ export interface FastAPIValidationIssue {
 export interface FastAPIErrorResponse {
   detail: string | FastAPIValidationIssue[];
 }
+export interface WorkspaceOverview {
+  workspace_id: string;
+  generated_at: string;
+  configuration: {
+    provider: string;
+    model: string;
+    max_revisions: number;
+    provider_retry_max_attempts: number;
+    provider_retry_initial_delay_seconds: number;
+    retrieval_method: "deterministic_sparse_cosine";
+    retrieval_top_k: number;
+  };
+  usage: {
+    saved_jobs: number;
+    jobs_with_runs: number;
+    runs: number;
+    succeeded_runs: number;
+    validation_failed_runs: number;
+    failed_runs: number;
+    active_runs: number;
+    published_artifacts: number;
+    jobs_with_published_artifacts: number;
+    mock_runs: number;
+    openai_runs: number;
+    other_provider_runs: number;
+    artifacts_with_resume_bullets: number;
+    gap_only_artifacts: number;
+    resume_bullets: number;
+    gaps: number;
+    cover_letters: number;
+  };
+}

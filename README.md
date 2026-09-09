@@ -1,13 +1,17 @@
 # Agent Platform
 
-> Evidence-grounded job application agent：把职位要求与候选人的真实证据组织成可追溯、可校验、可恢复的申请材料。
+> Evidence-grounded job application agent：把职位要求与候选人提供的证据组织成可追溯、可校验、可恢复的材料包。
 
-Agent Platform 是一条面向求职材料生成的有界 Agent workflow。用户提供职位描述和自己的履历、项目或作品证据；系统提取职位要求，在当前 workspace 中检索相关片段，生成结构化申请材料，并在发布前逐项校验事实、引用和需求覆盖。在成功发布的 ApplicationArtifact 中，每条候选人 claim 都必须有可信证据；没有证据的职位要求必须记录为 evidence gap，否则整个草稿会被拒绝发布。
+Agent Platform 是一个本地单机演示项目，用固定的六节点 LangGraph workflow 管理求职材料的生成与校验。用户粘贴职位描述和自己的履历、项目或作品证据；系统用规则拆分要求、检索所选资料中的相关片段、生成结构化材料包，并在发布前检查引用、原文对应和要求覆盖。没有检索到证据的要求必须记录为 evidence gap。
+
+当前输出是带引用的简历要点和缺口清单：claim 与简历要点必须逐字对应证据摘录，非空求职信不能通过发布校验。这些检查证明输出与所提供资料一致，不证明原始资料真实，也不判断经历是否在语义上满足职位。默认使用无模型调用的 Mock；OpenAI adapter 的真实连接与输出效果尚未验证。项目尚无登录、成员权限或生产任务队列，不是生产级多租户平台。
+
+第一次使用可先读 [Agent 配置、操作与产出核验指南](docs/AGENT_WALKTHROUGH.md)，或打开当前 workspace 的 `/workspaces/{workspace_id}/overview`，查看部署配置、工作流和实际计数。
 
 ## 为什么不是普通聊天封装
 
 - **Grounded generation**：成功发布的每条候选人 claim 都必须追溯到当前 workspace 中的 Document/Chunk。
-- **Explicit gaps**：成功发布时，没有可信证据的职位要求必须输出 gap；相似技能或模型常识不能替代既有经历。
+- **Explicit gaps**：成功发布时，没有检索证据的职位要求必须输出 gap；gap 表示资料不足，不等于候选人一定缺少这项能力。
 - **Deterministic publication gate**：只有通过独立 validator 的 Artifact 才能以成功状态发布。
 - **Observable execution**：Run 状态、节点事件、尝试次数、校验结果和最终产物均可查询。
 - **Bounded recovery**：Provider retry 和图修订都有上限；checkpoint、租约与 execution token 支持安全恢复。
@@ -17,15 +21,26 @@ Agent Platform 是一条面向求职材料生成的有界 Agent workflow。用�
 
 1. 创建 workspace-scoped Job 和纯文本证据 Document。
 2. 对 Document 进行幂等摄取、分块和来源持久化。
-3. 以确定性稀疏向量执行限定 workspace/document 的 Top-K 检索。
+3. 以词频向量和余弦相似度执行限定 workspace/document 的 Top-K 检索，不调用语义 embedding 模型。
 4. 输出 Requirement、Evidence、Claim、Citation、Gap 和 ApplicationArtifact 严格结构。
 5. 使用 LangGraph 编排 extract、retrieve、draft、validate、bounded revise 和 terminal。
 6. 通过 Run、RunEvent、ArtifactRecord、checkpoint、幂等键和条件 Resume 管理执行生命周期。
 7. 隔离 Deterministic Mock 与 OpenAI Responses Provider adapter，统一脱敏错误和重试语义。
-8. 在 React 工作台中完成创建、岗位列表搜索/分页、轮询、刷新恢复、事件查看、引用核验和失败恢复。
+8. 在 React 工作台中完成创建、岗位列表搜索/分页、Agent 概览、轮询、刷新恢复、事件查看、引用核验和失败恢复。
 9. 运行版本化离线评测，输出 retrieval、citation、coverage、gap 和 guardrail 指标。
 
 ## 工作流
+
+这是一个固定图编排的 Agent 工作流，不是六个自主 Agent 或 multi-agent 系统；模型不会自主选择工具。仅 `draft` 和 `revise` 调用所配置的 Provider。
+
+| 节点 | 实际处理 | 输出 |
+| --- | --- | --- |
+| `extract` | 按换行或英文句末分段，每段最多 800 字符、最多 20 条；首条 high，其余 medium | 规则提取的要求列表 |
+| `retrieve` | 对每条要求，在选定资料中按词频余弦检索 Top-5，核对数据库来源 | 带 Document/Chunk 引用的证据摘录 |
+| `draft` | Mock 选取证据，或调用 OpenAI 输出严格结构 | 一个材料包草稿 |
+| `validate` | 检查原文对应、引用、覆盖、缺口和标识一致性 | 通过结果或问题列表 |
+| `revise` | 使用同一批要求和证据修订，再回到 validate | 新草稿；默认最多 2 轮 |
+| `terminal` | 发布通过校验的材料包；未通过则结束为 validation_failed | 明确终态 |
 
 ```text
 React workbench
@@ -37,8 +52,11 @@ React workbench
 
 Run lifecycle
   → claim lease
-  → extract → retrieve → draft → validate
-                         ↘ bounded revise ↗
+  → extract → retrieve → draft → validate → terminal
+                                  │   ↑
+                    fail + budget │   │ validate again
+                                  ↓   │
+                                 revise
   → succeeded + published Artifact
     or validation_failed without published Artifact
     or failed + conditional resume
@@ -81,7 +99,7 @@ flowchart LR
 | Run lifecycle | 幂等启动、状态事务、事件、租约和恢复 | `backend/app/run_service.py`、Run ORM models |
 | Executor | 从可信数据库输入组合 Provider、RAG、Graph 和 validator | `backend/app/application_executor.py` |
 | Agent graph | extract/retrieve/draft/validate/revise/terminal | `backend/app/agent/graph.py` |
-| RAG | 分块、摄取、确定性 embedding/ranking 和 scoped retrieval | `backend/app/rag` |
+| RAG | 分块、摄取、词频向量余弦排序和 scoped retrieval | `backend/app/rag` |
 | Provider | 可重复 Mock 与 OpenAI Responses adapter | `backend/app/providers.py`、`openai_provider.py` |
 | Safety gate | 对可信 requirements/evidence 执行引用和 coverage 校验 | `backend/app/validation.py` |
 | Evaluation | 隔离数据集执行、质量指标、报告和退出码 | `backend/app/evaluation.py`、`eval_cli.py` |
@@ -90,7 +108,7 @@ flowchart LR
 
 | 风险 | 当前控制 |
 | --- | --- |
-| 模型编造候选人经历 | 可信 Evidence/Citation 校验；无证据必须输出 Gap |
+| 输出加入资料中不存在的经历 | Evidence/Citation 与逐字原文校验；无证据必须输出 Gap；不核验源资料真实性 |
 | 单次请求混用不同 workspace 的资源 | API、Service、数据库关系和发布前 verifier 多层限定；workspace scope 不等于用户认证或授权 |
 | 重复启动和重复执行 | workspace 内唯一 Idempotency-Key 与规范化请求冲突检测 |
 | 旧 worker 覆盖新结果 | 到期租约、heartbeat 和 execution-token fencing |
@@ -108,6 +126,21 @@ flowchart LR
 - Node.js 与 npm
 
 默认 Mock 路径不需要 OpenAI API key，也不会发起模型网络请求。
+
+### Agent 配置
+
+本地后端读取 `backend/.env` 或进程环境变量；以下是部署级设置，前端概览只读展示，不会在线修改配置。配置变更后重启后端。历史 Run 保留其 provider/model 标识，概览的配置卡表示当前部署设置。
+
+| 环境变量 | 默认值 | 含义 |
+| --- | --- | --- |
+| `AGENT_PLATFORM_LLM_PROVIDER` | `mock` | `mock` 或 `openai` |
+| `AGENT_PLATFORM_OPENAI_API_KEY` | 无 | 仅 OpenAI 模式必填；只保留在服务端 |
+| `AGENT_PLATFORM_OPENAI_MODEL` | 无 | OpenAI 模式必填的模型 ID |
+| `AGENT_PLATFORM_AGENT_MAX_REVISIONS` | `2` | 校验不通过后的修订上限，范围 0–5 |
+| `AGENT_PLATFORM_PROVIDER_RETRY_MAX_ATTEMPTS` | `3` | 每次 Provider 调用的总尝试次数，范围 1–5，包含首次调用 |
+| `AGENT_PLATFORM_PROVIDER_RETRY_INITIAL_DELAY_SECONDS` | `0.5` | 临时 Provider 错误的初始退避延时，单位秒，范围 0–60 |
+
+修订解决材料校验问题；重试处理连接、限流等临时调用失败，两者不能混算。切换真实模型前应先阅读[配置与现有输出限制](docs/AGENT_WALKTHROUGH.md#agent-怎样配置)。
 
 ### 1. 启动后端
 
@@ -150,6 +183,8 @@ docker compose up --build --wait
 ./scripts/docker-smoke.sh
 ```
 
+Compose 显式配置 `AGENT_PLATFORM_LLM_PROVIDER=mock`；修改 `backend/.env` 不会把 Docker 服务切换到 OpenAI。概览页显示实际服务的当前配置，避免将本地后端和容器后端混淆。
+
 普通 `docker compose down` 会保留数据；`docker compose down -v` 会永久删除本地演示数据库。拓扑、持久化复验和当前边界见 [Docker 一日版本](docs/DOCKER.md)。
 
 服务启动后的日志、端口、Linux 文件权限及连接排查，可按 [Linux / Docker 实操](docs/LINUX_DOCKER_LAB.md) 练习；`bash scripts/docker-ops-lab.sh` 使用独立练习资源自动验证 8 项操作，并保留现有应用数据。
@@ -160,6 +195,7 @@ docker compose up --build --wait
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
+| `GET` | `/api/v1/workspaces/{workspace_id}/overview` | 当前部署的公开配置白名单和当前 workspace 的产出统计 |
 | `POST` | `/api/v1/workspaces/{workspace_id}/jobs` | 创建职位 |
 | `GET` | `/api/v1/workspaces/{workspace_id}/jobs/{job_id}` | 读取职位 |
 | `POST` | `/api/v1/workspaces/{workspace_id}/documents` | 保存纯文本证据 |
@@ -170,6 +206,26 @@ docker compose up --build --wait
 | `POST` | `/api/v1/workspaces/{workspace_id}/runs/{run_id}/resume` | 条件恢复 retryable failure 或租约已过期的 Run |
 
 启动和恢复接口返回 `202 Accepted`，表示 Run 已被接受并进入后台执行，不表示材料已经生成成功；客户端应继续查询 Run，直到进入明确终态。
+
+概览接口仅返回明确允许公开的 provider、model、修订/重试设置、检索方式与计数，不返回 API key、数据库地址、环境变量全集、JD 或证据正文。workspace 过滤仍不构成登录或成员权限。
+
+## 多少 JD，产生多少材料
+
+一次 Run 对应一个已保存的 JD，成功后发布一个 ApplicationArtifact 材料包；同一个 JD 多次新建 Run 可以产生多个包。同一幂等请求或同一 Run 的恢复不会增加包数。要点、缺口和引用是包内条目，不应各算一份材料；全部是 gap 的包也可能成功发布。
+
+概览将已保存 JD、参与运行的 JD、Run、成功包、含简历要点的包、仅缺口包、要点与 gap 条目分别计数，同时区分 Mock 与 OpenAI 运行。成功不代表已经得到可投递的完整简历。
+
+2026-09-09 先核验了 3 条原始演示记录，随后使用可重复执行的合成数据脚本把三个指定 workspace 各补到 100 条 JD。现在共有 300 条 JD 记录，其中 297 条标题和正文均明确标记为 synthetic；原有 Run 和材料包没有复制或补造：
+
+| 数据来源 / workspace | 已保存 JD 记录 | 成功 Mock Run | 发布包 | 简历要点 | gap | 求职信 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Docker / `docker-acceptance` | 100 | 1 | 1 | 1 | 0 | 0 |
+| 本地 SQLite / `test-grounded` | 100 | 1 | 1 | 1 | 0 | 0 |
+| 本地 SQLite / `test-gap` | 100 | 1 | 1 | 0 | 1 | 0 |
+
+准确口径是：**3 个演示 workspace 共保存 300 条 JD，只有 3 条参与过运行；共 3 次成功 Mock Run、3 个发布包、2 个含简历要点的包和 1 个仅 Evidence Gap 的包。** 新增的 297 条仅用于列表、分页、搜索和 workspace 统计演示，不是 297 次 Agent 执行。
+
+这些是不同数据库或 workspace 的合成演示记录，不能称为“处理了 300 个真实职位”、300 次评测、300 份材料或真实模型效果；冻结的 3-case `smoke-v1` 是另外的合成回归测试，也不能计入用户使用量。目前没有可报告的真实求职样本质量提升率。填充脚本、数据口径和自有样本核验方法见[Agent 指南](docs/AGENT_WALKTHROUGH.md#300-条演示-jd-怎样生成)。
 
 ## 质量与验证
 
@@ -256,9 +312,10 @@ agent-platform/
 ## 已知边界与下一步
 
 - `workspace_id` 是数据作用域，不是 authentication 或 membership authorization。
-- 当前检索是确定性词法/稀疏向量路径，不代表真实语义 embedding 质量。
+- 当前检索是词频余弦路径，不是语义 embedding；连续中文分词和同义表达召回能力有限。
 - OpenAI adapter 只通过 fake-client 离线合同测试；真实连接、费用、输出质量及 validator 兼容性未验证。
 - Structured Outputs 保证结构和类型，不保证内容真实。
+- 当前发布校验只允许逐字对应证据的 claim/简历要点，非空求职信不能发布；并未实现完整简历排版或语义事实核验。
 - FastAPI `BackgroundTasks` 是单进程本地调度，不是 durable worker。
 - SQLite `create_all` 不是 migration 系统；PostgreSQL/Alembic 尚未实现。
 - Run 幂等无法保证供应商端 exactly-once；Job/Document 创建结果未知时，重试仍可能产生重复记录。
@@ -270,6 +327,7 @@ agent-platform/
 
 ## 项目文档
 
+- [Agent 配置、操作与产出核验指南](docs/AGENT_WALKTHROUGH.md)
 - [产品合同与证据规则](docs/PRODUCT_SCOPE.md)
 - [开发路线与阶段状态](docs/DEVELOPMENT_ROADMAP.md)
 - [Stage 8 固定评测](docs/EVALUATION.md)

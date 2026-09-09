@@ -20,6 +20,16 @@ export function AppHeader({ workspaceId, backTo }: AppHeaderProps) {
         </Link>
 
         <div className="app-header__actions">
+          <Link
+            className="quiet-link"
+            to={
+              workspaceId
+                ? `/workspaces/${encodeURIComponent(workspaceId)}/overview`
+                : "/overview"
+            }
+          >
+            Agent overview
+          </Link>
           {workspaceId ? (
             <span className="workspace-chip" title={workspaceId}>
               <span aria-hidden="true" />

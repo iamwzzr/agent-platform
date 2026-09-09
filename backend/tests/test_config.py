@@ -159,3 +159,25 @@ def test_settings_rejects_blank_openai_configuration(
             openai_api_key=api_key,
             openai_model=model,
         )
+
+
+def test_settings_uses_default_agent_max_revisions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("AGENT_PLATFORM_AGENT_MAX_REVISIONS", raising=False)
+    assert Settings(_env_file=None).agent_max_revisions == 2
+
+
+@pytest.mark.parametrize("value", [0, 5])
+def test_settings_reads_bounded_agent_max_revisions_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    value: int,
+) -> None:
+    monkeypatch.setenv("AGENT_PLATFORM_AGENT_MAX_REVISIONS", str(value))
+    assert Settings(_env_file=None).agent_max_revisions == value
+
+
+@pytest.mark.parametrize("value", [-1, 6])
+def test_settings_rejects_out_of_bounds_agent_max_revisions(value: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, agent_max_revisions=value)

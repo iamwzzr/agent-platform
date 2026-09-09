@@ -109,6 +109,7 @@ def _build_default_run_service() -> AgentRunService:
     executor = ApplicationGraphRunExecutor(
         session_factory=session_factory,
         provider=provider,
+        max_revisions=settings.agent_max_revisions,
         provider_retry_max_attempts=settings.provider_retry_max_attempts,
         provider_retry_initial_delay_seconds=(
             settings.provider_retry_initial_delay_seconds
